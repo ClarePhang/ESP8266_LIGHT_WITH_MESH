@@ -71,25 +71,37 @@ void ICACHE_FLASH_ATTR sp_PairedDevLoadAll(PairedButtonParam* buttonParam)
 
 void ICACHE_FLASH_ATTR sp_PairedParamSave(PairedButtonParam* buttonParam)
 {
-	buttonParam->magic = SP_PARAM_MAGIC;
-	config_ParamCsumSet(buttonParam,&(buttonParam->csum),sizeof(PairedButtonParam));
-	config_ParamSaveWithProtect(LIGHT_PAIRED_DEV_PARAM_ADDR,(uint8*)buttonParam ,sizeof(PairedButtonParam));
+    buttonParam->magic = SP_PARAM_MAGIC;
+    config_ParamCsumSet(buttonParam,&(buttonParam->csum),sizeof(PairedButtonParam));
+    config_ParamSaveWithProtect(LIGHT_PAIRED_DEV_PARAM_ADDR,(uint8*)buttonParam ,sizeof(PairedButtonParam));
+    os_printf("debug: check again: \r\n");
+    config_ParamCsumCheck(buttonParam,sizeof(PairedButtonParam));
 }
 
 void ICACHE_FLASH_ATTR sp_PairedDevParamReset(PairedButtonParam* buttonParam,uint8 max_num)
 {
-    //uint8 i=0;
-    //for(i=0;i<depth;i++){
-    //    memset(pairingInfo->button_mac[i],0,6);
-    //}
     os_memset(buttonParam,0,sizeof(PairedButtonParam));
 	buttonParam->MaxPairedDevNum = (max_num>MAX_BUTTON_NUM)?MAX_BUTTON_NUM:max_num;
     buttonParam->PairedNum=0;
 	sp_PairedParamSave(buttonParam);
 }
 
+void ICACHE_FLASH_ATTR
+sp_MacInit()
+{
+    os_printf("SP MAC INIT...\r\n");
+    config_ParamLoadWithProtect(LIGHT_PAIRED_DEV_PARAM_ADDR,0,(uint8*)&PairedDev,sizeof(PairedDev));
+    if(config_ParamCsumCheck((uint8*)&PairedDev, sizeof(PairedDev)) && PairedDev.magic == SP_PARAM_MAGIC){
+        os_printf("Paired dev check ok...\r\n");
+    }else{
+        os_printf("Paired dev not valid...\r\n");
+        sp_PairedDevParamReset(&PairedDev,MAX_BUTTON_NUM);
+    }
+    os_printf("===============\r\n");
+}
+
 int ICACHE_FLASH_ATTR 
-	sp_FindPairedDev(PairedButtonParam* buttonParam,uint8* button_mac)
+sp_FindPairedDev(PairedButtonParam* buttonParam,uint8* button_mac)
 {
     uint8 i=0;
     for(i=0;i<buttonParam->MaxPairedDevNum;i++){
@@ -97,51 +109,63 @@ int ICACHE_FLASH_ATTR
             return i; 
         }
     } 
-	return -1;
-
-}
-
-
-bool ICACHE_FLASH_ATTR sp_AddPairedDev(PairedButtonParam* buttonParam,uint8* button_mac,uint8* key,uint8 channel)
-{
-    if((buttonParam==NULL)||(buttonParam->PairedNum == buttonParam->MaxPairedDevNum)){
-        return  false;
-    }
-	
-    int i=sp_FindPairedDev(buttonParam,button_mac);
-    if(i>-1 && i< buttonParam->PairedNum){
-		os_memcpy(&buttonParam->PairedList[i].mac_t,button_mac,DEV_MAC_LEN);
-		os_memcpy(&buttonParam->PairedList[i].key_t,key,ESPNOW_KEY_LEN);
-		buttonParam->PairedList[i].channel_t = channel;
-		sp_PairedParamSave(buttonParam);
-		return true;
-    }	
-	uint8 idx = buttonParam->PairedNum;
-	os_memcpy(&buttonParam->PairedList[idx].mac_t,button_mac,DEV_MAC_LEN);
-	os_memcpy(&buttonParam->PairedList[idx].key_t,key,ESPNOW_KEY_LEN);
-	buttonParam->PairedList[idx].channel_t = channel;
-	buttonParam->PairedNum++;
-	sp_PairedParamSave(buttonParam);
-    return true;
+    return -1;
 }
 
 LOCAL void ICACHE_FLASH_ATTR 
-	sp_PopPairedDev(PairedButtonParam* buttonParam,uint8 idx)
+sp_PopPairedDev(PairedButtonParam* buttonParam,uint8 idx)
 {
-    #if 0
+    #if 1
     uint8 i = idx;
 	for(i;i<buttonParam->PairedNum-1;i++){
-		os_memcpy(buttonParam->button_mac[i],buttonParam->button_mac[i+1],DEV_MAC_LEN);
+		os_memcpy(&buttonParam->PairedList[i],&buttonParam->PairedList[i+1],sizeof(PairedSingleDev));
 	}
-	#endif
-	int i_last = buttonParam->PairedNum-1;
-	if(idx<buttonParam->PairedNum-1){
-		os_memcpy(&buttonParam->PairedList[idx],&buttonParam->PairedList[i_last],sizeof(PairedSingleDev));
-	}
-	//os_memset(buttonParam->button_mac[buttonParam->PairedNum-1],0,DEV_MAC_LEN);
-	os_memset(&buttonParam->PairedList[i_last],0,sizeof(PairedSingleDev));
-	buttonParam->PairedNum-=1;
+    #else
+    //int i_last = buttonParam->PairedNum-1;
+    //if(idx<buttonParam->PairedNum-1){
+    //    os_memcpy(&buttonParam->PairedList[idx],&buttonParam->PairedList[i_last],sizeof(PairedSingleDev));
+    //}
+    #endif
+	
+    os_memset(&buttonParam->PairedList[buttonParam->PairedNum-1],0,sizeof(PairedSingleDev));
+    buttonParam->PairedNum-=1;
 }
+
+
+//add and save paired device. if full,delete the oldest one.
+bool ICACHE_FLASH_ATTR sp_AddPairedDev(PairedButtonParam* buttonParam,uint8* button_mac,uint8* key,uint8 channel)
+{
+    //if((buttonParam==NULL)||(buttonParam->PairedNum == buttonParam->MaxPairedDevNum)){
+    //    return  false;
+    //}
+    
+    int i=sp_FindPairedDev(buttonParam,button_mac);
+	//already exist,remove the old one, add the new one in the end
+    if(i>-1 && i< buttonParam->PairedNum){
+        //os_memcpy(&buttonParam->PairedList[i].mac_t,button_mac,DEV_MAC_LEN);
+        //os_memcpy(&buttonParam->PairedList[i].key_t,key,ESPNOW_KEY_LEN);
+        //buttonParam->PairedList[i].channel_t = channel;
+        //sp_PairedParamSave(buttonParam);
+        sp_PopPairedDev(buttonParam,i);
+        //return true;
+    } 
+	//add new one at the end
+	uint8 idx;
+	if(buttonParam->PairedNum < buttonParam->MaxPairedDevNum){
+        idx = buttonParam->PairedNum;
+		buttonParam->PairedNum++;
+	}else{
+    	sp_PopPairedDev(buttonParam,0);
+		idx = buttonParam->MaxPairedDevNum-1;
+		buttonParam->PairedNum = buttonParam->MaxPairedDevNum;
+	}
+    os_memcpy(&buttonParam->PairedList[idx].mac_t,button_mac,DEV_MAC_LEN);
+    os_memcpy(&buttonParam->PairedList[idx].key_t,key,ESPNOW_KEY_LEN);
+    buttonParam->PairedList[idx].channel_t = channel;
+    sp_PairedParamSave(buttonParam);
+    return true;
+}
+
 
 bool ICACHE_FLASH_ATTR sp_DelPairedDev(PairedButtonParam* buttonParam,uint8* button_mac)
 {
@@ -151,110 +175,43 @@ bool ICACHE_FLASH_ATTR sp_DelPairedDev(PairedButtonParam* buttonParam,uint8* but
     uint8 i=0;
     for(i=0;i<buttonParam->PairedNum;i++){
         if(0 == os_memcmp(&buttonParam->PairedList[i],button_mac,DEV_MAC_LEN)){
-			sp_PopPairedDev(buttonParam,i);
-			sp_PairedParamSave(buttonParam);
-            return true;	
+            sp_PopPairedDev(buttonParam,i);
+            sp_PairedParamSave(buttonParam);
+            return true;    
         }
     }
-    return false;	 
+    return false;    
 }
 
-//uint8 ICACHE_FLASH_ATTR GetPoolBlankNodeCnt(PairedButtonParam* buttonParam)
-//{
-//    return (buttonParam->blank_node_cnt);
-//}
 uint8 ICACHE_FLASH_ATTR sp_GetPairedNum(PairedButtonParam* buttonParam)
 {
     return (buttonParam->PairedNum);
 }
 
-#if 0
-bool ICACHE_FLASH_ATTR GetPoolNodeIsEmpty(PairedButtonParam* buttonParam,uint8 i)
-{
-    uint8 c[6]={0,0,0,0,0,0};
-	if(i>=MAX_BUTTON_NUM){
-        os_printf("GetPoolNodeIsEmpty tht param unsafe i=%d\n",i);
-		return false;
-	}
-    if(!os_memcmp(buttonParam->button_mac[i],c,6)){
-        return true;
-	}
-	return false;
-}
-#endif
-
-#if 0
-//not used
-uint16 ICACHE_FLASH_ATTR GetButtonsMacInPoolPos(PairedButtonParam* buttonParam)
-{
-
-    uint8 i=0;
-	uint16 PosFlag=0;//Pool?D¦Ì?MAC BUFFER x????¨®D¨ºy?Y¡ê?PosFlag¦Ì?x???¨ª¡À?????
-	for(i=0;i<MAX_BUTTON_NUM;i++){
-        if(!GetPoolNodeIsEmpty(buttonParam,i)){
-           SetBit(PosFlag,i);
-        }
-	}
-	return PosFlag;
-}
-#endif
-
-
-#if 0
-#define MACSTR_PRIVATE "%02X%02X%02X%02X%02X%02X"
 bool ICACHE_FLASH_ATTR sp_PairedDevMac2Str(PairedButtonParam* buttonParam,uint8* SaveStrBuffer,uint16 buf_len)
 { 
-	uint8 i=0;
+    #define MACSTR_PRIVATE "%02X%02X%02X%02X%02X%02X"
+    uint8 i=0;
     uint8 cnt=sp_GetPairedNum(buttonParam);
-	
-	os_printf("PairedDevNum = %d\n",cnt);
-	//os_printf("the Mac In pool pos =0x%x\n",pos_flag);
-	if(cnt==0x00){
-	    return true;
-	}
-
-	uint16 len_cnt = 0;
-	for(i=0;i<cnt;i++){
-		if(len_cnt>buf_len-12){
-			os_printf("length error in sp_PairedDevMac2Str\r\n");
-			return false;
-		}
+    
+    os_printf("PairedDevNum = %d\n",cnt);
+    if(cnt==0x00){
+        return true;
+    }
+    
+    uint16 len_cnt = 0;
+    for(i=0;i<cnt;i++){
+        if(len_cnt>buf_len-12){
+            os_printf("length error in sp_PairedDevMac2Str\r\n");
+            return false;
+        }
         os_sprintf(SaveStrBuffer+len_cnt,MACSTR_PRIVATE,MAC2STR(buttonParam->PairedList[i].mac_t));
         len_cnt+=12;
-
-	}
-	return true;
-#undef MACSTR_PRIVATE
+    }
+    return true;
+    #undef MACSTR_PRIVATE
 }
-#endif
 
-#if 0
-//send button mac list to phone
-void ICACHE_FLASH_ATTR ResonseUserInquireButtonMacBody(uint8* SaveStrBuffer)
-{
-       uint8 MacListBuf[MAX_BUTTON_NUM*6*2+1];
-	uint8 cnt=sp_GetPairedNum(&PairedDev);
-	os_bzero(MacListBuf,sizeof(MacListBuf));
-	sp_PairedDevMac2Str(&PairedDev,MacListBuf,sizeof(MacListBuf)-1);
-	os_sprintf(SaveStrBuffer,"{\"status\":200,\"mac_len\":%d,\"mac\":\"%s\"}",cnt,MacListBuf);
-	//os_printf("ResonseUserInquireButtonMacBody:\n%s",SaveStrBuffer);
-}
-#endif
-
-
-
-
-#if 0
-void ICACHE_FLASH_ATTR sp_PrintBuf(uint8* data,uint8 len)
-{
-   uint8 i=0;
-   for(i=0;i<len;i++){
-   	 os_printf("%02x ",data[i]);
-   }	
-}
-#endif
-
-//bianli-traverse
 void ICACHE_FLASH_ATTR sp_DispPairedDev(PairedButtonParam* pairingInfo)
 {
     uint8 i=0;
@@ -262,33 +219,19 @@ void ICACHE_FLASH_ATTR sp_DispPairedDev(PairedButtonParam* pairingInfo)
         os_printf("Cnt=%d,PairedNum=%d------------------------\n",i,pairingInfo->PairedNum);
         os_printf("MAC:");
         sp_PrintBuf(pairingInfo->PairedList[i].mac_t,6);
-		os_printf("KEY:");
+        os_printf("KEY:");
         sp_PrintBuf(pairingInfo->PairedList[i].key_t,16);
     }
 }
 
-void ICACHE_FLASH_ATTR
-sp_MacInit()
-{
-	os_printf("SP MAC INIT: %d\r\n",sizeof(PairedDev));
-	config_ParamLoadWithProtect(LIGHT_PAIRED_DEV_PARAM_ADDR,0,(uint8*)&PairedDev,sizeof(PairedDev));
-	if(config_ParamCsumCheck((uint8*)&PairedDev, sizeof(PairedDev)) && PairedDev.magic == SP_PARAM_MAGIC){
-		os_printf("Paired dev check ok...\r\n");
-	}else{
-		os_printf("Paired dev not valid...\r\n");
-		sp_PairedDevParamReset(&PairedDev,MAX_BUTTON_NUM);
-	}
-	sp_DispPairedDev(&PairedDev);
-    //sp_PairedDevParamReset(&PairedDev,MAX_BUTTON_NUM);
-}
+
+
 
 PairedButtonParam* ICACHE_FLASH_ATTR
-	sp_GetPairedParam()
+sp_GetPairedParam()
 {
-	return &PairedDev;
+    return &PairedDev;
 }
-
-
 
 void sp_PrintBuf(uint8 * ch,uint8 len)
 {
@@ -334,7 +277,6 @@ void ICACHE_FLASH_ATTR ButtonPairTout()
 {
 	os_timer_disarm(&PairTout_t);
 	os_printf("Pair timeout...\r\n");
-	UART_WaitTxFifoEmpty(0,50000);
 	_SWITCH_GPIO_RELEASE();
 }
 
@@ -386,7 +328,8 @@ static void ICACHE_FLASH_ATTR wifiScanDoneCb(void *arg, STATUS status) {
     simple_pair_set_tmp_key(tmpkey, 16);
     simple_pair_sta_start_negotiate();
     #endif
-	sp_PairedDevRmAll(&PairedDev);
+	////sp_PairedDevRmAll(&PairedDev);
+	esp_now_del_peer(bestbss->bssid);
     ButtonStatrNegotiate(bestbss->bssid,tmpkey);
     os_printf("Button will Pair light MAC"MACSTR",channel=%d\n",MAC2STR(bestbss->bssid),bestbss->channel);
 	}

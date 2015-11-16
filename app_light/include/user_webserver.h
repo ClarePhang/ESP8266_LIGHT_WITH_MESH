@@ -25,13 +25,14 @@ typedef enum _ParmType {
     INFOMATION,
     WIFI,
     SCAN,
-	REBOOT,
+    REBOOT,
     DEEP_SLEEP,
     LIGHT_STATUS,
     BATTERY_STATUS,
     MESH_INFO,
     CONNECT_STATUS,
-    USER_BIN
+    USER_BIN,
+    ESPNOW_ACTION,
 } ParmType;
 
 typedef struct URL_Frame {
@@ -39,7 +40,7 @@ typedef struct URL_Frame {
     char pSelect[URLSize];
     char pCommand[URLSize];
     char pFilename[URLSize];
-	char pPath[URLSize];
+    char pPath[URLSize];
 } URL_Frame;
 
 typedef struct _rst_parm {

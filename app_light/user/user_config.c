@@ -8,7 +8,6 @@
 #define ESP_WEB_SUPPORT 0      /*set 1: enable new http webserver*/
 #define ESP_MDNS_SUPPORT 0     /*set 1: enable mdns*/
 
-#define ESP_MESH_STRIP  1
 
 #define ESP_DEBUG_MODE  1
 #define ESP_RESET_DEBUG_EN 1 
@@ -61,13 +60,13 @@ void ICACHE_FLASH_ATTR
 }
 
 
+#if 0
 void ICACHE_FLASH_ATTR
 config_ParamLoad(uint32 addr,uint8* pParam,int length)
 {
     spi_flash_read(addr,(uint32*)pParam,length);
-
-
 }
+#endif
 
 void ICACHE_FLASH_ATTR
 config_ParamLoadWithProtect(uint16 start_sec,uint16 offset,uint8* pParam,int length)

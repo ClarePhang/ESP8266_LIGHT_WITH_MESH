@@ -238,12 +238,28 @@ static void ICACHE_FLASH_ATTR captdnsRecv(void* arg, char *pusrdata, unsigned sh
 		}
 	}
 	//Send the response
+	//espconn_sent(conn, (uint8*)reply, rend-reply);
+	
+	//==================================
+	//This is add in sdk lib v1.4.0
+	os_printf("--------DEBUG IN WEB----------\r\n");
+	remote_info* pcon_info = NULL;
+	os_printf("link num: %d \r\n",conn->link_cnt);
+	espconn_get_connection_info(conn, &pcon_info, 0);
+	os_printf("remote ip: %d.%d.%d.%d \r\n",pcon_info->remote_ip[0],pcon_info->remote_ip[1],
+											pcon_info->remote_ip[2],pcon_info->remote_ip[3]);
+	os_printf("remote port: %d \r\n",pcon_info->remote_port);
+	//=================================
+	conn->proto.udp->remote_port = pcon_info->remote_port;
+	os_memcpy(conn->proto.udp->remote_ip,pcon_info->remote_ip,4);
 	espconn_sent(conn, (uint8*)reply, rend-reply);
+
 }
 
+
+static struct espconn conn;
+static esp_udp udpconn;
 void ICACHE_FLASH_ATTR captdnsInit(void) {
-	static struct espconn conn;
-	static esp_udp udpconn;
 	conn.type=ESPCONN_UDP;
 	conn.proto.udp=&udpconn;
 	conn.proto.udp->local_port = 53;

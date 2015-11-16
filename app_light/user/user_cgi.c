@@ -2093,6 +2093,9 @@ const EspCgiApiEnt espCgiApiNodes[]={
 };
 
 int ICACHE_FLASH_ATTR cgiEspApi(HttpdConnData *connData) {
+	os_printf("===================\r\n");
+	os_printf("In cgiEspApi\r\n");
+	os_printf("===================\r\n");
 	char *file=&connData->url[1]; //skip initial slash
 	char command[32];
 	char buf[1024]="";
@@ -2103,9 +2106,7 @@ int ICACHE_FLASH_ATTR cgiEspApi(HttpdConnData *connData) {
 	httpdHeader(connData, "Content-Type", "text/plain");
 	httpdEndHeaders(connData);
 	httpdFindArg(connData->getArgs, "command", command, sizeof(command));
-
 	os_printf("File %s Command %s\n", file, command);
-
 	//Find the command/file combo in the espCgiApiNodes table
 	i=0;
 	while (espCgiApiNodes[i].cmd!=NULL) {

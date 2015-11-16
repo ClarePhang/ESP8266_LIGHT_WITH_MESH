@@ -76,8 +76,9 @@ split(char *p1, char *p2, char *splits[])
         if (i > os_strlen(p1)) {
             break;
         }
+		os_free(p);
     }
-
+    
     return j;
 }
 

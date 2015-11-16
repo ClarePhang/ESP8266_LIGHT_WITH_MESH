@@ -8,6 +8,7 @@ typedef enum {
 	ESP_BEACON, //send heart beat / keep alive
 	ESP_RPC,    //send RPC command to server
 	ESP_RSP,    //send response to server 
+	ESP_DATA_FORCE,//send upgrade data
 } EspPlatformMsgType;
 
 typedef struct {

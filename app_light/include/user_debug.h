@@ -11,12 +11,4 @@ typedef struct
     unsigned m_nLength;
     unsigned long m_ulValue[BI_MAXLEN];
 }CBigInt;
-
-
-
-
-
-
-
-
 #endif

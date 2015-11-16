@@ -62,7 +62,10 @@ typedef enum{
     ACT_TYPE_ACK = 1,//NOT USED, REPLACED BY MAC ACK
     ACT_TYPE_SYNC = 2,
     ACT_TYPE_RSP = 3,
-    ACT_TYPE_SIMPLE_CMD = 4, //CMD 1-32
+    ACT_TYPE_PAIR_REQ = 4,
+    ACT_TYPE_PAIR_ACK = 5,
+    ACT_TYPE_SERVER = 6,
+    ACT_TYPE_SIMPLE_CMD = 7, //CMD 1-32
 }EspnowMsgType;
 
 
@@ -149,6 +152,7 @@ typedef enum{
 }EspnowReqRet;
 #endif
 
+
 bool ICACHE_FLASH_ATTR
 	light_EspnowCmdValidate(EspnowProtoMsg* EspnowMsg)
 {
@@ -167,9 +171,8 @@ bool ICACHE_FLASH_ATTR
     }
 }
 
-
 void ICACHE_FLASH_ATTR
-	light_EspnowSetCsum(EspnowProtoMsg* EspnowMsg)
+light_EspnowSetCsum(EspnowProtoMsg* EspnowMsg)
 {
     uint8* data = (uint8*)EspnowMsg;
     uint8 csum_cal = 0;
@@ -183,7 +186,6 @@ void ICACHE_FLASH_ATTR
 }
 
 #if LIGHT_SWITCH
-
 EspnowReqRet ICACHE_FLASH_ATTR
 switch_CheckCmdResult()
 {
@@ -201,7 +203,6 @@ switch_CheckCmdResult()
     return ret;
 }
 
-
 void ICACHE_FLASH_ATTR
 switch_EspnowAckCb()
 {
@@ -215,15 +216,11 @@ switch_EspnowAckCb()
             ESPNOW_DBG("NEXT CHANNEL: %d \r\n",++channel_cur);
             switch_EspnowSendCmdByChnl(channel_cur,pwm_chn_num, pwm_duty, pwm_period,cmd_code);
         }
-    
     }else if(ret == ALL_CHL_OK){
         ESPNOW_DBG("ALL CHANNEL OK,release power\r\n");
         _SWITCH_GPIO_RELEASE();
     }
-    
 }
-
-
 
 EspnowReqRet ICACHE_FLASH_ATTR
 switch_CheckSyncResult()
@@ -239,7 +236,6 @@ switch_CheckSyncResult()
     return ret;
 }
 
-
 void ICACHE_FLASH_ATTR
 switch_EspnowSyncExit()
 {
@@ -254,7 +250,6 @@ switch_EspnowSyncExit()
 	sp_PairedParamSave(&PairedDev);
     _SWITCH_GPIO_RELEASE();
 }
-
 
 void ICACHE_FLASH_ATTR
 switch_EspnowSyncCb()
@@ -275,9 +270,6 @@ switch_EspnowSyncCb()
         switch_EspnowSyncExit();
     }
 }
-
-
-
 
 void ICACHE_FLASH_ATTR
 switch_EspnowSendRetry(void* arg)
@@ -341,13 +333,13 @@ switch_EspnowSendRetry(void* arg)
     }
 }
 
+
 os_timer_t espnow_send_t;
 int send_idx;
 void ICACHE_FLASH_ATTR
 	switch_EspnowSendFunc()
 {
 	//for(send_idx=0;send_idx<channel_num;send_idx++){
-	
 	if(send_idx<channel_num){
 		os_timer_disarm(&espnow_send_t);
 		os_printf("t: %d \r\n",system_get_time());
@@ -359,6 +351,7 @@ void ICACHE_FLASH_ATTR
 	}
 
 }
+
 void ICACHE_FLASH_ATTR 
 switch_EspnowSendCmdByChnl(uint16 chn,uint16 channelNum, uint32* duty, uint32 period,uint32 code)
 {
@@ -409,13 +402,31 @@ switch_EspnowSendCmdByChnl(uint16 chn,uint16 channelNum, uint32* duty, uint32 pe
 
 
 extern uint32 user_GetBatteryVoltageMv();
-
 void ICACHE_FLASH_ATTR
-	switch_EspnowBuildPacket()
+switch_EspnowBuildPacket()
 {
 
-
 }
+
+uint16 ICACHE_FLASH_ATTR
+	switch_EspnowKeyValMap(uint16 io_val)
+{
+    switch(io_val&0xff){
+        case 0x0e: return (io_val&0xff00)| '1'; //key '1'
+		case 0x0d: return (io_val&0xff00)| '2'; //key '2'
+		case 0x07: return (io_val&0xff00)| '3'; //key '3'
+		case 0x0b: return (io_val&0xff00)| '4'; //key '4'
+		
+		case 0x0c: return (io_val&0xff00)| 'U'; //key 'U'
+		case 0x03: return (io_val&0xff00)| 'D'; //key 'D'
+		case 0x06: return (io_val&0xff00)| 'L'; //key 'l'
+		case 0x09: return (io_val&0xff00)| 'R'; //key 'R'
+		default: return 0;
+
+    }
+}
+
+
 void ICACHE_FLASH_ATTR 
 switch_EspnowSendLightCmd(uint16 idx, uint16 channelNum, uint32* duty, uint32 period,uint32 code)
 {
@@ -431,7 +442,8 @@ switch_EspnowSendLightCmd(uint16 idx, uint16 channelNum, uint32* duty, uint32 pe
     EspnowMsg.cmd_index=idx;
     EspnowMsg.wifiChannel = wifi_get_channel();
     EspnowMsg.sequence = actionReqStatus[idx].sequence;
-	EspnowMsg.io_val = switch_gpio_val;
+	EspnowMsg.io_val = switch_EspnowKeyValMap(switch_gpio_val);
+	os_printf("io_val: %c\r\n",EspnowMsg.io_val);
 	#if ACTION_CMD_RSP
 	EspnowMsg.rsp_if = 1;
     #else
@@ -454,7 +466,7 @@ switch_EspnowSendLightCmd(uint16 idx, uint16 channelNum, uint32* duty, uint32 pe
     //test
     os_printf("***********************\r\n");
     os_printf("EspnowMsg.lightCmd.cmd_code : %d \r\n",EspnowMsg.lightCmd.cmd_code);
-    
+
 #if ACT_DEBUG
     ESPNOW_DBG("send to :\r\n");
 	ESPNOW_DBG("MAC: "MACSTR"\r\n",MAC2STR(PairedDev.PairedList[idx].mac_t));
@@ -466,12 +478,11 @@ switch_EspnowSendLightCmd(uint16 idx, uint16 channelNum, uint32* duty, uint32 pe
 
     int res = esp_now_send((uint8*)PairedDev.PairedList[idx].mac_t, (uint8*)&EspnowMsg, sizeof(EspnowProtoMsg));
 	os_printf("ESPNOW SEND RES: %d \r\n",res);
-    
     //os_timer_arm( &actionReqStatus[idx].req_timer, actionReqStatus[idx].retry_expire,0);
 }
 
 
-
+	
 void ICACHE_FLASH_ATTR 
 switch_EspnowSendChnSync(uint8 channel)
 {
@@ -495,8 +506,9 @@ switch_EspnowSendChnSync(uint8 channel)
             EspnowMsg.cmd_index = idx;
             EspnowMsg.wifiChannel = wifi_get_channel();
             EspnowMsg.sequence = actionReqStatus[idx].sequence;
-			EspnowMsg.io_val = switch_gpio_val;
+			EspnowMsg.io_val = switch_EspnowKeyValMap(switch_gpio_val);
 			EspnowMsg.rsp_if = 1;
+			os_printf("io_val: %c\r\n",EspnowMsg.io_val);
 			
             EspnowMsg.lightSync.switchChannel=wifi_get_channel();
             EspnowMsg.lightSync.lightChannel = 0;
@@ -528,7 +540,6 @@ switch_EspnowSendChnSync(uint8 channel)
         switch_EspnowSyncCb();
     }
 }
-
 
 void ICACHE_FLASH_ATTR
 switch_EspnowChnSyncStart()
@@ -606,8 +617,6 @@ switch_EspnowRcvCb(u8 *macaddr, u8 *data, u8 len)
 
 }
 
-
-
 int ICACHE_FLASH_ATTR
 switch_GetLightMacIdx(uint8* mac_addr)
 {
@@ -623,7 +632,6 @@ switch_GetLightMacIdx(uint8* mac_addr)
     return -1;
 }
 
-
 void ICACHE_FLASH_ATTR
 	esp_now_send_cb(u8 *mac_addr, u8 status)
 {
@@ -634,7 +642,7 @@ void ICACHE_FLASH_ATTR
     os_printf("STATUS: %d \r\n",status);
     os_printf("====================\r\n");
 
-    int mac_idx = switch_GetLightMacIdx(mac_addr) ;
+    int mac_idx = switch_GetLightMacIdx(mac_addr);
     if(mac_idx < 0 && mac_idx>=PairedDev.PairedNum){
         os_printf("MAC idx error: %d \r\n",mac_idx);
         return;
@@ -647,7 +655,7 @@ void ICACHE_FLASH_ATTR
         EspnowSendStatus->status = ACT_ACK;//ACT NOT RESPONSED YET,FOR CMD ACK IS ENOUGH, FOR SYNC , WAITING FOR RESPONSE
         os_printf("data ACKed...\r\n");
         os_timer_disarm(&EspnowSendStatus->req_timer);
-        if(EspnowRetryMsg->type==ACT_TYPE_DATA){
+        if(EspnowRetryMsg->type==ACT_TYPE_DATA || EspnowRetryMsg->type==ACT_TYPE_SERVER){  //WJL ADD 151027
         #if ACTION_CMD_RSP
 			os_printf("go to set retry:\r\n");
             goto SET_RETRY;
@@ -658,7 +666,6 @@ void ICACHE_FLASH_ATTR
             os_printf("go to set retry:\r\n");
             goto SET_RETRY;
         }
-    
     }else{ //send fail
 SET_RETRY:
     os_timer_disarm(&EspnowSendStatus->req_timer);
@@ -734,6 +741,7 @@ void ICACHE_FLASH_ATTR switch_EspnowInit()
     } else {
         os_printf("dl init failed\n");
     }
+	
     esp_now_set_self_role(ESP_NOW_ROLE_CONTROLLER);  //role 1: switch   ;  role 2 : light;
     esp_now_register_send_cb(esp_now_send_cb);
     //system_param_load(ESPNOW_PARAM_SEC,0,&switchEspnowParam,sizeof(switchEspnowParam));
@@ -742,9 +750,6 @@ void ICACHE_FLASH_ATTR switch_EspnowInit()
     //switch_EspnowSlaveMacInit();
 	sp_MacInit();
     ESPNOW_DBG("==============================\r\n");
-	
-
-		
     ESPNOW_DBG("MAGIC: %08x\r\n",PairedDev.magic);
 	
 #if ESPNOW_KEY_HASH

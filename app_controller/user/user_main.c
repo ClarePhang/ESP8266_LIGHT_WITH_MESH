@@ -10,6 +10,7 @@
 *******************************************************************************/
 #include "ets_sys.h"
 #include "osapi.h"
+#include "user_switch.h"
 
 #if 0
 #include "httpd.h"
@@ -31,7 +32,6 @@ unsigned char *default_private_key;
 unsigned int default_private_key_len = 0;
 #endif
 #endif
-
 
 
 #include "gpio.h"

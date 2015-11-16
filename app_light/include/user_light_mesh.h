@@ -20,15 +20,15 @@ typedef void (*mesh_InitTimeoutCallback)(void *para);
 
 
 typedef struct  {
-	mesh_FailCallback mesh_fail_cb;
-	mesh_SuccessCallback mesh_suc_cb;
-	mesh_InitTimeoutCallback mesh_init_tout_cb;
-	uint32 start_time;
-	uint32 init_retry;
+    mesh_FailCallback mesh_fail_cb;
+    mesh_SuccessCallback mesh_suc_cb;
+    mesh_InitTimeoutCallback mesh_init_tout_cb;
+    uint32 start_time;
+    uint32 init_retry;
 } LIGHT_MESH_PROC;
 
 
-void user_MeshInit();
+void user_MeshStart();
 void user_MeshSetInfo();
 void mesh_StopReconnCheck();
 char* mesh_GetMdevMac();

@@ -14,16 +14,17 @@
 
 #define ESP_MESH_SUPPORT    1  /*set 1: enable mesh*/
 #define ESP_TOUCH_SUPPORT  1   /*set 1: enable esptouch*/
-#define ESP_NOW_SUPPORT 1      /*set 1: enable espnow*/
-#define ESP_WEB_SUPPORT 0      /*set 1: enable new http webserver*/
+#define ESP_WEB_SUPPORT 0     /*set 1: enable new http webserver*/
 #define ESP_MDNS_SUPPORT 0     /*set 1: enable mdns*/
+#define ESP_NOW_SUPPORT 1      /*set 1: enable espnow*/
+    #define ESP_SIMPLE_PAIR_EN  1 /* set 1: enable simplepair for espnow*/
+#define ESP_SIMPLE_PAIR_SUPPORT (ESP_NOW_SUPPORT && ESP_SIMPLE_PAIR_EN)
 
-#define ESP_MESH_STRIP  1
 
 #define ESP_DEBUG_MODE  1
 #define ESP_RESET_DEBUG_EN 1 
 
-#define MESH_TEST_VERSION   0x4
+#define MESH_TEST_VERSION   14
 
 
 typedef enum{
@@ -39,12 +40,14 @@ typedef enum{
 
 
 //flash data address.
+//should be binded together later
 #define FLASH_PARAM_ADDR_0 0x7C  //SAVE PLATFORM PARAM(DEVKEY,TOKEN,...)
 #define FLASH_PARAM_ADDR_1 0X7D  //SAVE LIGHT PARAM(DUTY,PERIOD...)
 #define FLASH_PARAM_ADDR_2 0X79  //SAVE SWITCH MAC LIST AND ESPNOW KEY
 #define FLASH_PARAM_ADDR_3 0xF8  //RECORD EXCEPTION PARAM.
 #define FLASH_PARAM_ADDR_4 0xF9  //RECORD EXCEPTION INFO.
 #define FLASH_PARAM_ADDR_5 0x76  //RECORD MODULE ENABLE FLAGS
+#define FLASH_PARAM_ADDR_6 0xF6  //RECORD ESPNOW ACTION FUNCTIONS
 
 
 
@@ -70,13 +73,7 @@ typedef enum{
 #if ESP_MESH_SUPPORT
 
     /*This is the configuration of mesh*/
-
-	
 	enum{
-		//MULTICAST_CMD_INGROUP,
-		//MULTICAST_CMD_EXGROUP,
-		//MULTICAST_CMD_NOGROUP,
-		//MULTICAST_CMD_NOTROOT,
 		MULTICAST_CMD_ROOT_INGROUP,
 		MULTICAST_CMD_ROOT_EXGROUP,
 		MULTICAST_CMD_NODE_INGROUP,
@@ -84,13 +81,15 @@ typedef enum{
 		MULTICAST_CMD_NOGROUP,
 	};
 
-
+    #define MESH_SET_GROUP_ID  1
+	static const uint8 MESH_GROUP_ID[6] = {0x18,0xfe,0x34,0x00,0x00,0x02};
     #define MESH_INFO os_printf
-    #define MESH_INIT_RETRY_LIMIT 0       /*number of retry attempts after mesh enable failed;*/
-    
+    #define MESH_INIT_RETRY_LIMIT 2       /*number of retry attempts after mesh enable failed;*/
+    #define MESH_MAX_HOP_NUM  5
     #define MESH_INIT_TIME_LIMIT  120000   /*limit time of mesh init*/
-    #define MESH_TIME_OUT_MS   120000
-    
+    #define MESH_TIME_OUT_MS   300000     /* timeout for mesh enable */
+    #define MESH_INIT_TIMEOUT_SET  0	  /*0:do not set a timeout for mesh init, mesh would try searching and joining in a available network*/
+
     #define MESH_STATUS_CHECK_MS  1000    /*time expire to check mesh init status*/
     #define MESH_UPGRADE_SEC_SIZE 640     /*length of binary upgrade stream in a single packet*/
     #define MESH_SSID_PREFIX "TEST_MESH"   /*SET THE DEFAULT MESH SSID PATTEN;THE FINAL SSID OF SOFTAP WOULD BE "MESH_SSID_PREFIX_X_YYYYYY"*/
@@ -168,18 +167,6 @@ typedef enum{
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
 /*============================================================*/
 /*====                                                    ====*/
 /*====        PARAMS FOR ESP-NOW                          ====*/
@@ -190,35 +177,19 @@ typedef enum{
 #if ESP_NOW_SUPPORT
 
 
+    #define ESPNOW_DEBUG 1
 
     #define WIFI_DEFAULT_CHANNEL 1
     #define ESPNOW_DBG os_printf  /*debug info for espnow*/
     #define ESPNOW_ENCRYPT  1     /*enable espnow encryption*/
     #define ESPNOW_KEY_HASH 0     /*Use hashed value of given key as the espnow encryption key */
     #define ESPNOW_KEY_LEN 16     /*ESPNOW KEY LENGTH,DO NOT CHANGE IT,FIXED AS 16*/
-    //#define LIGHT_DEV_NUM  10   /*LIGHT DEV NUMBER FOR CONTROLLER DEV,NOT USED IN LIGHT APP(already moved to flash param)*/
     #define SWITCH_DEV_NUM 5      /*SET THE NUMBER OF THE CONTROLLER DEVICES,IF SET ESPNOW_ENCRYPT,THE NUMBER IS LIMITED TO 5*/
-	//#define ESPNOW_CMD_INTVERVAL  250000  /*MIN INTERVAL BETWEEN TWO ESPNOW COMMAND(us)*/
 	
-    #define LIGHT_MASTER_MAC_LIST_ADDR  FLASH_PARAM_ADDR_2 /*flash sec num where keeps the controller mac addresses*/
+    //#define LIGHT_MASTER_MAC_LIST_ADDR  FLASH_PARAM_ADDR_2 /*flash sec num where keeps the controller mac addresses*/
 	#define LIGHT_PAIRED_DEV_PARAM_ADDR FLASH_PARAM_ADDR_2
-	//uint8 SWITCH_MAC_2[SWITCH_DEV_NUM][6];
-    //#define LIGHT_MASTER_MAC_LIST_ADDR (ESP_PARAM_START_SEC*SPI_FLASH_SEC_SIZE+sizeof(struct esp_platform_saved_param))
+	#define LIGHT_ESPNOW_ACTION_MAP_PARAM_ADDR FLASH_PARAM_ADDR_6
 
-
-	#if 0
-    /*KEY FOR ESPNOW ENCRYPTION*/
-    /*NOTE: THE SAME KEY MUST BE SET ON BOTH SIDES: LIGHT&CONTROLLER*/
-    static const uint8 esp_now_key[ESPNOW_KEY_LEN] = {0x10,0xfe,0x94, 0x7c,0xe6,0xec,0x19,0xef,0x33, 0x9c,0xe6,0xdc,0xa8,0xff,0x94, 0x7d};//key
-    /*MAC LIST FOR THE CONTROLLER DEVICES,HARD CODED NOW*/
-    static const uint8 SWITCH_MAC[SWITCH_DEV_NUM][DEV_MAC_LEN] = {{0x18,0xfe,0x34, 0x9a,0xb3,0xfe},
-                                                                  {0x18,0xfe,0x34, 0xa5,0x3d,0x68},
-                                                                  {0x18,0xfe,0x34, 0xa5,0x3d,0x66},
-                                                                  {0x18,0xfe,0x34, 0xa5,0x3d,0x7b},
-                                                                  
-                                                                  {0x18,0xfe,0x34, 0xa5,0x3d,0x84}};
-    #endif
-   
 #endif
 
 
@@ -235,6 +206,7 @@ typedef enum{
     #define ESPTOUCH_CONNECT_TIMEOUT_MS 40000   /*Time limit for connecting WiFi after ESP-TOUCH figured out the SSID&PWD*/
     #define ESP_TOUCH_TIME_ENTER  60000         /*Time limit for ESP-TOUCH to receive config packets*/
     #define ESP_TOUCH_TIMEOUT_MS 120000         /*Total time limit for ESP-TOUCH*/
+	#define ESP_TOUCH_TIME_LIMIT  2             /*Get into ESPTOUCH MODE only twice at most, then scan mesh if not connected*/
 #endif
 
 
@@ -277,11 +249,11 @@ typedef enum{
 
 #if PLUG_DEVICE || LIGHT_DEVICE
 #define BEACON_TIMEOUT  150000000
-#define BEACON_TIME     50000
+#define BEACON_TIME     (40000+os_random()%10000)
 
 #endif
 
-#define AP_CACHE           1
+#define AP_CACHE           0
 
 #if AP_CACHE
 #define AP_CACHE_NUMBER    5

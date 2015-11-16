@@ -5,6 +5,7 @@
 /*user_light_adj: API for color changing and lighting effects, user level*/
 #include "user_config.h"
 
+
 /*set target duty for PWM channels, change each channel duty gradually */
 void  light_set_aim(uint32 r,uint32 g,uint32 b,uint32 cw,uint32 ww,uint32 period,uint8 ctrl_mode);//'white' channel is not used in default demo
 void light_set_aim_r(uint32 r);

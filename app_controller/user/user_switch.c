@@ -99,7 +99,7 @@ uint8 ICACHE_FLASH_ATTR
 }
 
 
-uint8 switch_gpio_val = 0;
+uint16 switch_gpio_val = 0;
 uint8 key_val_err_flg = 0;
 
 void ICACHE_FLASH_ATTR
@@ -130,25 +130,23 @@ LIGHT_RESET
 
 
 void ICACHE_FLASH_ATTR
-	user_LongPressAction()
+user_LongPressAction()
 {
 	_SWITCH_GPIO_HOLD();
-
-	os_printf("switch_gpio_val: %02X\r\n",switch_gpio_val);
+    switch_gpio_val = (0xff00 | switch_gpio_val );
+	os_printf("switch_gpio_val: %04X\r\n",switch_gpio_val);
 	os_printf("-------------\r\n");
-	if(switch_gpio_val == 0xd){
+	if(switch_gpio_val == 0xff0d){
     	os_printf("\r\n\n==========================\r\n");
     	os_printf("SEND LIGHT RESET \r\n");
     	os_printf("==========================\r\n\n\n");
 		uint32 code = LIGHT_RESET;
 		switch_EspnowSendCmdByChnl(1, 5, pwm_duty_data, 1000,code);
-	}else if(switch_gpio_val == 0x6){
+	}else if(switch_gpio_val == 0xff06){
 		os_printf("\r\n================\r\n");
 		os_printf("PAIR START\r\n");
 		buttonSimplePairStart(NULL);
 		os_printf("================\r\n");
-
-
 	}else{
     	os_printf("\r\n\n==========================\r\n");
     	os_printf("SEND LIGHT SYNC \r\n");
@@ -164,7 +162,6 @@ void ICACHE_FLASH_ATTR
 	user_SwitchReact()
 {
     os_printf("switch_GetGpioVal in action: 0x%02x\r\n",switch_gpio_val);	
-	//UART_WaitTxFifoEmpty(0,50000);
 	//_SWITCH_GPIO_RELEASE();//DEBUG!!!!!
 	
 	//if(switch_gpio_val==0x0 || switch_gpio_val == 0x3){
@@ -218,7 +215,7 @@ void ICACHE_FLASH_ATTR
     	os_printf("cmd code: %d \r\n",code);
     	switch_EspnowSendCmdByChnl(1, 5, pwm_duty_data, 1000,code);
 	}else{
-
+        
 	}
 
 	//if there is a long press, run channel synchronization.

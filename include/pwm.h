@@ -11,6 +11,8 @@
  /*SUPPORT UP TO 8 PWM CHANNEL*/
 #define PWM_CHANNEL_NUM_MAX 8 
 
+#define DUTY_MAX_LIMIT(T)  (T*1000/45)
+
 struct pwm_param {
     uint32 period;
     uint32 freq;

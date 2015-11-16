@@ -1,13 +1,15 @@
 #ifndef __USER_SIMPLEPAIR_H__
 #define __USER_SIMPLEPAIR_H__
 
+
 #include "espnow.h"
 #include "user_config.h"
+
+#if ESP_SIMPLE_PAIR_SUPPORT
+
+
 #define MAX_BUTTON_NUM 10
-
 #define SP_PARAM_MAGIC 0x5c5caacc
-
-
 #define DEFAULT_CHANNEL 1
 
 typedef struct {
@@ -17,7 +19,6 @@ uint8 channel_t;
 }PairedSingleDev;
 
 typedef struct {
-	//uint8 button_mac[MAX_BUTTON_NUM][6];
 	uint8 csum;
 	uint32 magic;
 	PairedSingleDev PairedList[MAX_BUTTON_NUM];
@@ -42,13 +43,10 @@ SP_ST_MAX,
 typedef void (*simple_pair_status_cb_t) (uint8* sa,uint8 status);
 int register_simple_pair_status_cb(simple_pair_status_cb_t);
 void unregister_simple_pair_status_cb(void);
-
 int simple_pair_init();
 void simple_pair_deinit();
-
 void simple_pair_ap_enter_scan_mode(void);
 void simple_pair_sta_enter_scan_mode(void);
-
 void simple_pair_sta_start_negotiate(void);
 void simple_pair_ap_start_negotiate(void);
 void simple_pair_ap_refuse_negotiate(void);
@@ -74,15 +72,18 @@ SP_LIGHT_ERROR_HANDLE
 #define PAIR_RESULT "/device/button/pair/result"
 #define PAIR_BUTTONS_MAC   "/device/button/pair/device"
 #define PAIR_DELET_BUTTONS "/device/button/devices/action=delete"
-extern PairedButtonParam PairedDev;
 
-//extern enum SimplePairStatus pairStatus;
+#define DELET_BUTTON_LEN_TAG "\"mac_len\""
+#define DELET_BUTTON_MAC_TAG "\"mac\""
+extern PairedButtonParam PairedDev;
 
 void light_simple_pair_enable(void);
 void simple_pair_enable();
 void sp_MacInit();
-//void ResonseUserInquireButtonMacBody(uint8* SaveStrBuffer);
-void ICACHE_FLASH_ATTR sp_DispPairedDev(PairedButtonParam* buttonParam);
-bool ICACHE_FLASH_ATTR sp_AddPairedDev(PairedButtonParam* buttonParam,uint8* button_mac ,uint8* mac,uint8 channel);
-void ICACHE_FLASH_ATTR sp_LightPairState(void);
+void sp_DispPairedDev(PairedButtonParam* buttonParam);
+bool sp_AddPairedDev(PairedButtonParam* buttonParam,uint8* button_mac ,uint8* mac,uint8 channel);
+void sp_LightPairState(void);
+
+#endif
+
 #endif

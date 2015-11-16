@@ -5,7 +5,10 @@
 #include "osapi.h"
 #include "mem.h"
 #include "user_interface.h"
-
+#if ESP_MESH_SUPPORT
+#include "mesh.h"
+#include "user_light_mesh.h"
+#endif
 #define SEND_DBG  //os_printf
 
 RINGBUF ringBuf;
@@ -113,7 +116,6 @@ void ICACHE_FLASH_ATTR
 	}
 
 	if(sf.pConn==NULL|| sf.pConn->proto.tcp == NULL){
-		
 		espSendQueueUpdate(espSendGetRingbuf());//	
 		espSendAck(espSendGetRingbuf());
 		SEND_DBG("send espconn NULL \r\n");
@@ -121,27 +123,37 @@ void ICACHE_FLASH_ATTR
 	}else{
 		
 		RINGBUF_PullRaw(r,dataSend,sf.dataLen,sizeof(EspSendFrame));
-		os_printf("---------------\r\n");
-		os_printf("data send:\r\n%s\r\n",dataSend);
-		os_printf("---------------\r\n");
+		//os_printf("---------------\r\n");
+		//os_printf("data send:\r\n%s\r\n",dataSend);
+		//os_printf("---------------\r\n");
+		
+        #if ESP_DEBUG_MODE
+	    if(NULL == (char*)os_strstr(dataSend,"download_rom_base64")){
+        //if(1){
+            os_printf("------------------\r\n");
+            os_printf("data send\r\n%s \r\n",dataSend);
+			os_printf("ESPCONN: %p; STATUS: %d \r\n",sf.pConn,sf.pConn->state);
+            os_printf("------------------\r\n");
+        }else{
+            os_printf("data send: %d \r\n",sf.dataLen);
+        }
+        #endif
+
 
     	sint8 res;
 
 #if ESP_MESH_SUPPORT
-	#if ESP_MESH_STRIP
-		#if ESP_DEBUG_MODE
-		    struct espconn* pConTmp = (struct espconn*)user_GetUserPConn();
-		    if(pConTmp == sf.pConn){
-				res = espconn_mesh_sent(sf.pConn, dataSend, sf.dataLen);
-		    }else{
-				res = espconn_sent(sf.pConn, dataSend, sf.dataLen);
-		    }
-		#else
-            res = espconn_mesh_sent(sf.pConn, dataSend, sf.dataLen);
-		#endif
+	#if ESP_DEBUG_MODE
+	    struct espconn* pConTmp = (struct espconn*)user_GetUserPConn();
+	    if(pConTmp == sf.pConn){
+			res = espconn_mesh_sent(sf.pConn, dataSend, sf.dataLen);
+	    }else{
+			res = espconn_sent(sf.pConn, dataSend, sf.dataLen);
+	    }
 	#else
-    res = espconn_sent(sf.pConn, dataSend, sf.dataLen);
+        res = espconn_mesh_sent(sf.pConn, dataSend, sf.dataLen);
 	#endif
+
 
 #else
 #ifdef CLIENT_SSL_ENABLE
@@ -159,8 +171,9 @@ void ICACHE_FLASH_ATTR
     	//SEND_DBG("%s \r\n",dataSend);
     	//SEND_DBG("*******************\r\n");
 
-    	if(res==0){
-    		os_printf("espconn send ok, wait for callback...\r\n");
+    	if(res==0 || res == -4){
+    		if(res == 0) os_printf("espconn send ok, wait for callback...\r\n");
+			else if(res == -4) os_printf("espconn send connection error, drop ...\r\n");
 			send_retry_cnt = 0;
     		espSendQueueUpdate(espSendGetRingbuf());//	
     		espSendAck(espSendGetRingbuf());
@@ -177,9 +190,13 @@ void ICACHE_FLASH_ATTR
 				espSendQueueUpdate(espSendGetRingbuf());//	
 				espSendAck(espSendGetRingbuf());
 			}else{
-			    send_retry_cnt++;
+			    if(sf.dType == ESP_DATA_FORCE){
+					//no retry limit for upgrade
+			    }else{
+			        send_retry_cnt++;
+			    }
     		    os_timer_disarm(&esp_send_t);
-				if(send_retry_cnt>30){
+				if(send_retry_cnt>50){
                     os_timer_arm(&esp_send_t,1000,0);
 				}else{
     		        os_timer_arm(&esp_send_t,500,0);
@@ -259,5 +276,92 @@ void ICACHE_FLASH_ATTR
 	else 
 		system_os_post(ESP_SEND_TASK_PRIO, 0, (os_param_t)r);
 }
+
+
+#if 0
+//------------------------------------------------------------------------------
+//user_mesh_send
+//#include "jsontree.h"
+#include "user_json.h"
+
+typedef struct{
+    char sip_str[9];
+    char sport_str[5];
+}MeshInfo;
+
+MeshInfo meshParseInfo;
+
+
+LOCAL int ICACHE_FLASH_ATTR
+mesh_parse_set(struct jsontree_context *js_ctx, struct jsonparse_state *parser)
+{
+    int type;
+    while ((type = jsonparse_next(parser)) != 0) {
+        if (type == JSON_TYPE_PAIR_NAME) {
+            if (jsonparse_strcmp_value(parser, "sip") == 0) {
+                jsonparse_next(parser);
+                jsonparse_next(parser);
+                jsonparse_copy_value(parser, meshParseInfo.sip_str, sizeof(meshParseInfo.sip_str));
+				os_printf("sip: %s\r\n",meshParseInfo.sip_str);
+            }else if(jsonparse_strcmp_value(parser, "sport") == 0){
+                jsonparse_next(parser);
+                jsonparse_next(parser);
+                jsonparse_copy_value(parser, meshParseInfo.sport_str, sizeof(meshParseInfo.sport_str));
+				os_printf("sport: %s\r\n",meshParseInfo.sport_str);
+            }
+        }
+    }
+    return 0;
+}
+
+
+LOCAL struct jsontree_callback mesh_parse_callback =
+    JSONTREE_CALLBACK(NULL, mesh_parse_set);
+
+
+
+JSONTREE_OBJECT(mesh_parse_tree,
+                JSONTREE_PAIR("sip", &mesh_parse_callback),
+                JSONTREE_PAIR("sport", &mesh_parse_callback),
+                 //JSONTREE_PAIR("mdev_mac", &mesh_parse_callback),
+                 //JSONTREE_PAIR("glen", &mesh_parse_callback),
+                 //JSONTREE_PAIR("group", &mesh_parse_callback)
+                );
+JSONTREE_OBJECT(mesh_json_info,
+               JSONTREE_PAIR("mesh_json_info", &mesh_parse_tree));
+
+
+void ICACHE_FLASH_ATTR user_mesh_send(struct espconn* pConn,char* data, uint16 data_len,uint8 max_buf_len)
+{
+    uint8 data_buf[1300];
+	uint8 tag_buf[20];
+	os_bzero(data_buf,sizeof(data_buf));
+	os_memcpy(data_buf,data,data_len);
+	//if (!mesh_json_add_elem(pbuf, sizeof(pbuf), sip, ESP_MESH_JSON_IP_ELEM_LEN)) return;
+	//if (!mesh_json_add_elem(pbuf, sizeof(pbuf), sport, ESP_MESH_JSON_PORT_ELEM_LEN)) return;
+	//if (!mesh_json_add_elem(pbuf, sizeof(pbuf), dev_mac, ESP_MESH_JSON_DEV_MAC_ELEM_LEN)) return;
+     
+	if(os_strlen(meshParseInfo.sip_str)){
+	    os_bzero(tag_buf,sizeof(tag_buf));
+		os_sprintf(tag_buf,ESP_MESH_SIP_STRING": \"%s\"",meshParseInfo.sip_str);
+		if (!mesh_json_add_elem(data_buf, sizeof(data_buf), tag_buf, os_strlen(tag_buf))) return;
+	}
+	if(os_strlen(meshParseInfo.sport_str)){
+	    os_bzero(tag_buf,sizeof(tag_buf));
+		os_sprintf(tag_buf,ESP_MESH_SPORT_STRING": \"%s\"",meshParseInfo.sport_str);
+		if (!mesh_json_add_elem(data_buf, sizeof(data_buf), tag_buf, os_strlen(tag_buf))) return;
+	}
+	char* pMmac = (char*)mesh_GetMdevMac();
+	mesh_json_add_elem(data_buf, sizeof(data_buf), pMmac, os_strlen(pMmac));
+
+
+}
+
+#endif
+
+
+
+
+
 
 
