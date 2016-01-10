@@ -5,7 +5,7 @@
 
 typedef void(*buttonSimplePairDoneCb)(int success);
 
-#define MAX_BUTTON_NUM 10
+#define MAX_BUTTON_NUM 1
 
 #define SP_PARAM_MAGIC 0x5c5caacc
 #define LIGHT_PAIRED_DEV_PARAM_ADDR 0x7D
@@ -25,12 +25,9 @@ typedef struct {
 	PairedSingleDev PairedList[MAX_BUTTON_NUM];
 	uint8 PairedNum;
 	uint8 MaxPairedDevNum;
-	
 }PairedButtonParam;
 
 extern PairedButtonParam PairedDev;
-
-
 
 typedef enum{
 SP_ST_STA_FINISH=0,   //success when sta finish the neg

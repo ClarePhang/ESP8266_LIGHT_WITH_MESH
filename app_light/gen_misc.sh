@@ -1,5 +1,5 @@
 #!/bin/bash
-export SDK_BASE=/home/esp8266/Share/git_folder/git_hub_release/esp_light_with_mesh
+export SDK_BASE=/home/esp8266/Share/esp_light_with_mesh
 
 echo "gen_misc.sh version 20150511"
 echo ""

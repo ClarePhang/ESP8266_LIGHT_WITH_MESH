@@ -5,12 +5,11 @@
 #include "espnow.h"
 #include "user_config.h"
 
-#if ESP_SIMPLE_PAIR_SUPPORT
-
-
+#if ESP_NOW_SUPPORT
 #define MAX_BUTTON_NUM 10
 #define SP_PARAM_MAGIC 0x5c5caacc
 #define DEFAULT_CHANNEL 1
+
 
 typedef struct {
 uint8 mac_t[DEV_MAC_LEN];
@@ -26,6 +25,13 @@ typedef struct {
 	uint8 MaxPairedDevNum;
 	
 }PairedButtonParam;
+#endif
+
+#if ESP_SIMPLE_PAIR_SUPPORT
+
+
+
+
 
 typedef enum{
 SP_ST_STA_FINISH=0,   //success when sta finish the neg

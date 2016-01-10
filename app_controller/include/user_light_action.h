@@ -23,6 +23,7 @@ LIGHT_RESET
 #define ESPNOW_ENCRYPT  1
 #define ESPNOW_KEY_HASH 0
 
+
 #define ESPNOW_KEY_LEN 16
 
 
@@ -35,24 +36,14 @@ LIGHT_RESET
 
 
 
-#if LIGHT_DEVICE
-void light_EspnowInit();
-void light_EspnowDeinit();
-#elif LIGHT_SWITCH
 void  switch_EspnowInit();
-void  switch_EspnowSendLightCmd(uint16 idx, uint16 channelNum, uint32* duty, uint32 period,uint32 code);
-void switch_EspnowSendCmdByChnl(uint16 chn,uint16 channelNum, uint32* duty, uint32 period,uint32 code);
+void  switch_EspnowSendLightCmdIdx(uint16 idx, uint16 channelNum, uint32* duty, uint32 period,uint32 code);
+void switch_EspnowSendLightCmd(uint16 channelNum, uint32* duty, uint32 period,uint32 code);
 void switch_EspnowSendChnSync(uint8 channel);
 void  switch_EspnowDeinit();
-#endif
-
-
-
-
-
-
-
-
+void switch_EspnowSendSimpleCmd(uint16 idx, uint16 key_val);
+void switch_EspnowSendCmd(uint16 button);
+uint16 switch_EspnowKeyValMap(uint16 io_val);
 
 
 #endif

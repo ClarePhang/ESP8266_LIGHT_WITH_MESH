@@ -8,10 +8,13 @@
 #if ESP_MESH_SUPPORT
 	#include "mesh.h"
 #endif
-#define LIGHT_INFO os_printf
 
-os_timer_t light_hint_t;
-struct light_saved_param light_param_pre;
+os_timer_t light_hint_t,light_recover_t;
+struct light_saved_param light_param_target;
+static bool light_error_flag = false;
+static bool light_shade_idle = true;
+struct light_saved_param light_param_error; 
+	
 
 LOCAL void ICACHE_FLASH_ATTR
 light_blink(uint32 color)
@@ -73,8 +76,48 @@ light_blinkStart(uint32 COLOR)
 LOCAL uint8 restore_flg = 0;  //0: not change pre-param, set back to pre-param
                               //1: restore cur-param to pre param, set back to pre-param
 LOCAL uint8 shade_cnt = 0;
+
+
+void ICACHE_FLASH_ATTR 
+light_show_hint_color(uint32 color)
+{
+    switch(color){
+    	case HINT_GREEN:
+    		light_set_aim(0,20000,0,2000,2000,1000,0);
+    		break;
+    	case HINT_RED:
+    		light_set_aim(20000,0,0,2000,2000,1000,0);
+    		break;
+    	case HINT_BLUE:
+    		light_set_aim(0,0,20000,2000,2000,1000,0);
+    		break;
+    	case HINT_WHITE:
+    		light_set_aim(0,0,0,20000,20000,1000,0);
+    		break;
+    	case HINT_PURE_RED:
+    		light_set_aim(22222,0,0,0,0,1000,0);
+    		break;
+    	case HINT_PURE_GREEN:
+    		light_set_aim(0,22222,0,0,0,1000,0);
+    		break;
+    	case HINT_PURE_BLUE:
+    		light_set_aim(0,0,22222,0,0,1000,0);
+    		break;
+		case HINT_TARGET:
+            light_set_aim(light_param_target.pwm_duty[0],light_param_target.pwm_duty[1],light_param_target.pwm_duty[2],
+            light_param_target.pwm_duty[3],light_param_target.pwm_duty[4],light_param_target.pwm_period,0);
+			break;
+		case HINT_YELLOW:
+			light_set_aim(22222,22222,0,0,0,1000,0);
+			break;
+		case HINT_PURPLE:
+			light_set_aim(0,22222,22222,0,0,1000,0);
+			break;
+    }
+}
+
 LOCAL void ICACHE_FLASH_ATTR
-light_shade(uint32 color)
+light_shade(int color)
 {
     static bool color_flg = true;
     #if 1
@@ -84,9 +127,19 @@ light_shade(uint32 color)
             cnt = 0;
             color_flg = true;
             os_timer_disarm(&light_hint_t);
-            os_printf("RECOVER LIGHT PARAM: \r\n");
-            light_set_aim(light_param_pre.pwm_duty[0],light_param_pre.pwm_duty[1],light_param_pre.pwm_duty[2],
-            light_param_pre.pwm_duty[3],light_param_pre.pwm_duty[4],light_param_pre.pwm_period,0);
+            LIGHT_INFO("RECOVER LIGHT PARAM; light_shade: \r\n");
+			#if ESP_DEBUG_MODE
+			if(light_error_flag){
+                light_set_aim(light_param_error.pwm_duty[0],light_param_error.pwm_duty[1],light_param_error.pwm_duty[2],
+                              light_param_error.pwm_duty[3],light_param_error.pwm_duty[4],light_param_error.pwm_period,0);
+			}else{
+                light_set_aim(light_param_target.pwm_duty[0],light_param_target.pwm_duty[1],light_param_target.pwm_duty[2],
+                              light_param_target.pwm_duty[3],light_param_target.pwm_duty[4],light_param_target.pwm_period,0);
+			}
+			#else
+			light_set_aim(light_param_target.pwm_duty[0],light_param_target.pwm_duty[1],light_param_target.pwm_duty[2],
+						  light_param_target.pwm_duty[3],light_param_target.pwm_duty[4],light_param_target.pwm_period,0);
+			#endif
             return;
         }else if(cnt==0){
             color_flg = true;
@@ -96,30 +149,7 @@ light_shade(uint32 color)
     #endif
     
     if(color_flg){
-        switch(color){
-            case HINT_GREEN:
-                light_set_aim(0,20000,0,2000,2000,1000,0);
-                break;
-            case HINT_RED:
-                light_set_aim(20000,0,0,2000,2000,1000,0);
-                break;
-            case HINT_BLUE:
-                light_set_aim(0,0,20000,2000,2000,1000,0);
-                break;
-            case HINT_WHITE:
-                light_set_aim(0,0,0,20000,20000,1000,0);
-                break;
-			case HINT_PURE_RED:
-				light_set_aim(22222,0,0,0,0,1000,0);
-				break;
-			case HINT_PURE_GREEN:
-				light_set_aim(0,22222,0,0,0,1000,0);
-				break;
-			case HINT_PURE_BLUE:
-				light_set_aim(0,0,22222,0,0,1000,0);
-				break;
-				
-        }        
+		light_show_hint_color(color);      
         color_flg = false;
     }
     else{
@@ -137,8 +167,8 @@ light_MeshStoreCurParam(struct light_saved_param* plight_param)
     for(i=0;i<PWM_CHANNEL;i++){
         plight_param->pwm_duty[i] = user_light_get_duty(i);
     }
-    os_printf("CURRENT LIGHT PARAM:\r\n");
-    os_printf("r: %d ; g: %d ; b: %d ;ww: %d ; cw: %d \r\n",plight_param->pwm_duty[0],
+    LIGHT_INFO("CURRENT LIGHT PARAM:light_MeshStoreCurParam\r\n");
+    LIGHT_INFO("r: %d ; g: %d ; b: %d ;ww: %d ; cw: %d \r\n",plight_param->pwm_duty[0],
                                                             plight_param->pwm_duty[1],
                                                             plight_param->pwm_duty[2],
                                                             plight_param->pwm_duty[3],
@@ -154,8 +184,8 @@ light_MeshStoreSetParam(struct light_saved_param* plight_param,uint32 period,uin
     for(i=0;i<PWM_CHANNEL;i++){
         plight_param->pwm_duty[i] = light_duty[i];
     }
-    os_printf("CURRENT LIGHT PARAM:\r\n");
-    os_printf("r: %d ; g: %d ; b: %d ;ww: %d ; cw: %d \r\n",plight_param->pwm_duty[0],
+    LIGHT_INFO("CURRENT LIGHT PARAM:light_MeshStoreSetParam\r\n");
+    LIGHT_INFO("r: %d ; g: %d ; b: %d ;ww: %d ; cw: %d \r\n",plight_param->pwm_duty[0],
                                                             plight_param->pwm_duty[1],
                                                             plight_param->pwm_duty[2],
                                                             plight_param->pwm_duty[3],
@@ -165,17 +195,18 @@ light_MeshStoreSetParam(struct light_saved_param* plight_param,uint32 period,uin
 void ICACHE_FLASH_ATTR
 light_shadeStart(uint32 color,uint32 t,uint32 shadeCnt,uint8 restore_if,uint32* color_param)
 {
-    LIGHT_INFO("LIGHT SHADE START");
     shade_cnt = shadeCnt;
     restore_flg = restore_if;
+    
+	
     if(restore_flg==1){  //RESTORE THE GIVEN COLOR AFTER SHADING
         if(color_param){
-            os_memcpy(light_param_pre.pwm_duty,color_param,sizeof(uint32)*PWM_CHANNEL);
+            os_memcpy(light_param_target.pwm_duty,color_param,sizeof(uint32)*PWM_CHANNEL);
         }else{
-            light_MeshStoreCurParam(&light_param_pre);
+            //light_MeshStoreCurParam(&light_param_target);
         }
-    }else if(restore_flg ==2){  //keep the shade color after finish shading
-        uint32 v_r=0,v_g=0,v_b=0,v_cw=2000,v_ww=2000;
+    }else if(restore_flg ==2 || restore_flg==3 ){  //keep the shade color after finish shading
+        uint32 v_r=0,v_g=0,v_b=0,v_cw=3000,v_ww=3000;
         switch(color){
             case HINT_GREEN:
                 v_g = 20000;
@@ -205,11 +236,24 @@ light_shadeStart(uint32 color,uint32 t,uint32 shadeCnt,uint8 restore_if,uint32* 
 				v_cw=0;
 				v_ww=0;
 				break;
+			case HINT_YELLOW:
+				v_r = 22222;
+				v_g = 22222;
+				break;
+			case HINT_PURPLE:
+				v_g = 22222;
+				v_b = 22222;
+				break;
             default:
                 break;
         }   
         uint32 dtmp[] = {v_r,v_g,v_b,v_cw,v_ww};
-        light_MeshStoreSetParam(&light_param_pre,1000,dtmp);
+		if(restore_flg == 2){
+            light_MeshStoreSetParam(&light_param_target,1000,dtmp);
+	    }else if(restore_flg==3){
+            light_MeshStoreSetParam(&light_param_error,1000,dtmp);
+			light_error_flag = true;
+	    }
     }
     os_timer_disarm(&light_hint_t);
     os_timer_setfn(&light_hint_t,light_shade,color);
@@ -221,23 +265,7 @@ void ICACHE_FLASH_ATTR
 light_hint_stop(uint32 color)
 {
     os_timer_disarm(&light_hint_t);
-    switch(color){
-        case HINT_RED:
-            light_set_aim(22222,0,0,5000,5000,1000,0);
-            break;
-        case HINT_GREEN:
-            light_set_aim(0,22222,0,5000,5000,1000,0);
-            break;
-        case HINT_BLUE:
-            light_set_aim(0,0,22222,5000,5000,1000,0);
-            break;
-        case HINT_WHITE:
-            light_set_aim(0,0,0,22222,22222,1000,0);
-            break;
-        default:
-            light_set_aim(0,0,0,22222,22222,1000,0);
-            break;
-    }
+	light_show_hint_color(color);
 }
 
 void ICACHE_FLASH_ATTR
@@ -249,118 +277,92 @@ light_hint_abort()
 void ICACHE_FLASH_ATTR
 	light_ColorRecover()
 {
-    light_set_aim(light_param_pre.pwm_duty[0],light_param_pre.pwm_duty[1],light_param_pre.pwm_duty[2],
-                  light_param_pre.pwm_duty[3],light_param_pre.pwm_duty[4],light_param_pre.pwm_period,0);
-    os_printf("RECOVER LIGHT PARAM: \r\n");
-    os_printf("r: %d ; g: %d ; b: %d ;ww: %d ; cw: %d \r\n",light_param_pre.pwm_duty[0],light_param_pre.pwm_duty[1],light_param_pre.pwm_duty[2],
-                                                            light_param_pre.pwm_duty[3],light_param_pre.pwm_duty[4]);
+
+	#if ESP_DEBUG_MODE
+    if(light_error_flag){
+        light_error_flag = false;
+		light_set_aim(light_param_error.pwm_duty[0],light_param_error.pwm_duty[1],light_param_error.pwm_duty[2],
+					  light_param_error.pwm_duty[3],light_param_error.pwm_duty[4],light_param_error.pwm_period,0);
+		LIGHT_INFO("RECOVER LIGHT PARAM ;light_ColorRecover: \r\n");
+		LIGHT_INFO("r: %d ; g: %d ; b: %d ;ww: %d ; cw: %d \r\n",light_param_error.pwm_duty[0],light_param_error.pwm_duty[1],light_param_error.pwm_duty[2],
+																light_param_error.pwm_duty[3],light_param_error.pwm_duty[4]);
+		return;
+    }
+	#endif
+	
+    light_set_aim(light_param_target.pwm_duty[0],light_param_target.pwm_duty[1],light_param_target.pwm_duty[2],
+                  light_param_target.pwm_duty[3],light_param_target.pwm_duty[4],light_param_target.pwm_period,0);
+    LIGHT_INFO("RECOVER LIGHT PARAM ;light_ColorRecover: \r\n");
+    LIGHT_INFO("r: %d ; g: %d ; b: %d ;ww: %d ; cw: %d \r\n",light_param_target.pwm_duty[0],light_param_target.pwm_duty[1],light_param_target.pwm_duty[2],
+                                                            light_param_target.pwm_duty[3],light_param_target.pwm_duty[4]);
 }
 
 void ICACHE_FLASH_ATTR
-light_DevShowLevel(uint8 level)
+light_ShowDevLevel_t(void* mlevel_t)
 {
-    switch(level){
-        case 1:  //level 1 : WHITE 
-            light_set_aim(0,0,0,22222,22222,1000,0);
+    uint32 mlevel = (uint32)mlevel_t;
+    light_hint_abort();
+
+    
+	uint32 color = HINT_WHITE;
+    switch(mlevel){
+        case 1:
+			color = HINT_WHITE;
             break;
-        case 2:  //level 2: RED
-            light_set_aim(22222,0,0,5000,5000,1000,0);
+        case 2:
+			color = HINT_RED;
             break;
-        case 3:  //level 3: GREEN
-            light_set_aim(0,22222,0,5000,5000,1000,0);
+        case 3:
+			color = HINT_GREEN;
             break;
-        case 4:  //level 4: BLUE
-            light_set_aim(0,0,22222,5000,5000,1000,0);
+        case 4:
+			color = HINT_BLUE;
             break;
-		case 5: //level 5: YELLOW
-			light_set_aim(0,22222,22222,5000,5000,1000,0);
+		case 5: //level 5: PURPLE
+			color = HINT_PURPLE;
 			break;
-		case 6: //level 65: YELLOW
-			light_set_aim(22222,22222,0,5000,5000,1000,0);
+		case 6: //level 6: YELLOW
+			color = HINT_YELLOW;
 			break;
         default:
-            light_set_aim(0,0,0,22222,22222,1000,0);
+            color = HINT_WHITE;
             break;
+		
     }
+	
+	light_shadeStart(color,500,mlevel,1,NULL);
+	#if ESP_DEBUG_MODE
+        os_timer_disarm(&light_recover_t);
+        os_timer_setfn(&light_recover_t,light_ColorRecover,NULL);
+    	os_timer_arm(&light_recover_t,15000,0);
+	#endif
 }
 
-//LOCAL uint8 MeshLevel;
+
+os_timer_t show_level_delay_t;
 void ICACHE_FLASH_ATTR
-light_DevShadeLevel(uint32 mlevel)
+light_ShowDevLevel(uint32 mlevel,uint32 delay_ms)
 {
-    static uint8 round = 0, color_flg = 0;
-    static uint32 level;
-    level = ((uint32)mlevel);
-    os_printf("round: %d ; level: %d \r\n",round,level);
+    os_timer_disarm(&show_level_delay_t);
+	os_timer_setfn(&show_level_delay_t,light_ShowDevLevel_t,mlevel);
+	os_timer_arm(&show_level_delay_t,delay_ms,0);
 
-    if(round == 0){
-        light_MeshStoreCurParam(&light_param_pre);
-    }
-    
-    if(round%2 == 0){
-        if(level==0){
-            light_set_aim(20000,0,0,0,0,1000,0);
-        }else{ 
-            light_set_aim(0,0,0,0,0,1000,0);
-        }
-    }else if(round < (level*2+1)){  
-        #if ESP_MESH_SUPPORT
-            sint8 meshStatus=espconn_mesh_get_status();
-            switch(meshStatus){
-                case MESH_DISABLE:
-                    os_printf("mesh status: MESH_DISABLE\r\n");
-                    light_set_aim(20000,0,0,3000,3000,1000,0);
-                    break;
-                case MESH_WIFI_CONN:
-                    os_printf("mesh status: MESH_WIFI_CONN\r\n");
-                    light_set_aim(0,20000,0,3000,3000,1000,0);
-                    break;
-                case MESH_LOCAL_AVAIL:
-                    os_printf("mesh status: MESH_LOCAL_AVAIL\r\n");
-                    light_set_aim(0,0,20000,3000,3000,1000,0);
-                    break;
-                case MESH_ONLINE_AVAIL:
-                    os_printf("mesh status: MESH_ONLINE_AVAIL\r\n");
-                    light_set_aim(0,0,0,12000,12000,1000,0);
-                    break;
-            }
-        #else
-            os_printf("NON-MESH DEVICE\r\n");
-            light_set_aim(20000,0,0,3000,3000,1000,0);
-        #endif
-    }
-    round++;
-    if(round >= (level*2+1) && round>=2){ //stop,resume color
-        os_printf("show level stop ...\r\n");
-        light_hint_abort();
-        light_DevShowLevel(level);
-        os_timer_disarm(&light_hint_t);
-        os_timer_setfn(&light_hint_t,light_ColorRecover,NULL);
-        os_timer_arm(&light_hint_t,10000,0);
-        round = 0;
-        level = 0;
-    }else{
-        os_timer_disarm(&light_hint_t);
-        os_timer_setfn(&light_hint_t,light_DevShadeLevel,level);
-        os_timer_arm(&light_hint_t,500,0);
-    }
-
-}
-
-void ICACHE_FLASH_ATTR
-light_ShowDevLevel(uint32 mlevel)
-{
-    light_hint_abort();
-    os_printf("%s : level: %d \r\n",__func__,mlevel);
-    light_DevShadeLevel(mlevel);
 }
 
 void ICACHE_FLASH_ATTR
 light_Espnow_ShowSyncSuc()
 {
-    light_ShowDevLevel(1);
+	light_shadeStart(HINT_WHITE,500,2,1,NULL);
 }
 
 
+void ICACHE_FLASH_ATTR
+	light_set_color(uint32 r,uint32 g,uint32 b,uint32 cw,uint32 ww,uint32 period)
+{
+	os_timer_disarm(&light_hint_t);
+	uint32 d_color[] = {r,g,b,cw,ww};
+	light_MeshStoreSetParam(&light_param_target,period,d_color);
+    light_set_aim(r,g,b,cw,ww,period,0);
+}
 #endif
 

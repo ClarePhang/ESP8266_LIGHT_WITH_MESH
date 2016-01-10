@@ -1,33 +1,7 @@
 #include "user_config.h"
 #include "osapi.h"
 #include "c_types.h"
-#if 0
-#define ESP_MESH_SUPPORT    1  /*set 1: enable mesh*/
-#define ESP_TOUCH_SUPPORT  1   /*set 1: enable esptouch*/
-#define ESP_NOW_SUPPORT 1      /*set 1: enable espnow*/
-#define ESP_WEB_SUPPORT 0      /*set 1: enable new http webserver*/
-#define ESP_MDNS_SUPPORT 0     /*set 1: enable mdns*/
 
-#define ESP_MESH_STRIP  1
-
-#define ESP_DEBUG_MODE  1
-#define ESP_RESET_DEBUG_EN 1 
-
-#define MESH_TEST_VERSION   0x4
-#endif
-
-typedef struct{
-uint8 csum;
-uint8 Param_ESPMeshFunc;
-uint8 Param_ESPTOUCHFunc;
-uint8 Param_ESPNOWFunc;
-uint8 Param_ESPWEBFunc;
-uint8 Param_MDNSFunc;
-
-}LightFuncParam;
-
-
-LightFuncParam lightFuncParam;
 
 
 bool ICACHE_FLASH_ATTR

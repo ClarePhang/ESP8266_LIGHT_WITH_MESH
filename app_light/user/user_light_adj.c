@@ -242,7 +242,7 @@ static void ICACHE_FLASH_ATTR light_pwm_smooth_adj_proc(void)
         light_save_target_duty();
         if(check_pwm_duty_zero()){
             if(light_sleep_flg==0){
-                os_printf("light sleep en\r\n");
+                LIGHT_INFO("light sleep en\r\n");
                 wifi_set_sleep_type(LIGHT_SLEEP_T);
                 light_sleep_flg = 1;
             }
@@ -282,7 +282,7 @@ light_get_cur(uint32 duty , uint8 channel, uint32 period)
             }
             break;
         default:
-            os_printf("CHANNEL ERROR IN GET_CUR\r\n");
+            LIGHT_INFO("CHANNEL ERROR IN GET_CUR\r\n");
             break;
     }
 }
@@ -294,10 +294,12 @@ light_get_cur(uint32 duty , uint8 channel, uint32 period)
 void ICACHE_FLASH_ATTR
 light_set_aim(uint32 r,uint32 g,uint32 b,uint32 cw,uint32 ww,uint32 period,u8 ctrl_mode)
 {
-    //os_printf("light_set_aim\r\n");
+    //LIGHT_INFO("light_set_aim\r\n");
     struct pwm_param *tmp = LightEvtMalloc();    
     if(tmp != NULL){
         tmp->period = (period<10000?period:10000);
+		tmp->period = (period>1000?period:1000);
+		
         uint32 duty_max_limit = (period*1000/45);
         
         tmp->duty[LIGHT_RED] = (r<duty_max_limit?r:duty_max_limit);
@@ -328,13 +330,13 @@ light_set_aim(uint32 r,uint32 g,uint32 b,uint32 cw,uint32 ww,uint32 period,u8 ct
                 cur_ww = light_get_cur( tmp->duty[LIGHT_WARM_WHITE],LIGHT_WARM_WHITE, tmp->period);
             }	    
         #endif
-        os_printf("prd:%u  r : %u  g: %u  b: %u  cw: %u  ww: %u \r\n",period,
+        LIGHT_INFO("prd:%u  r : %u  g: %u  b: %u  cw: %u  ww: %u \r\n",period,
         tmp->duty[0],tmp->duty[1],tmp->duty[2],tmp->duty[3],tmp->duty[4]);
         cur_ctrl_mode = ctrl_mode;
         light_pwm_smooth_adj_proc();
     }
     else{
-        os_printf("light para full\n");
+        LIGHT_INFO("light para full\n");
     }
 }
 
@@ -352,12 +354,12 @@ void ICACHE_FLASH_ATTR
     timer_cnt -= 1;
     if(timer_cnt<=0){
 		int bcst_if = (uint32)broadcast_if;
-		#if 0
+		#if ESP_MESH_SUPPORT
 		if(bcst_if){
 			light_SendMeshBroadcastCmd(0,0,0,0,0,1000);
 		}
 		#endif
-        light_set_aim(0,0,0,0,0,1000,0);
+        light_set_color(0,0,0,0,0,1000);
         timer_cnt = 0;
         os_timer_disarm(&shut_down_t);
     }
@@ -370,17 +372,25 @@ light_TimerAdd(uint32* duty,uint32 t,bool add_if,uint32 broadcast_if)
     if(timer_cnt==0){
 		
         if(duty){
-            light_set_aim(duty[0],duty[1],duty[2],duty[3],duty[4],1000,0);
+            light_set_color(duty[0],duty[1],duty[2],duty[3],duty[4],1000);
+			#if ESP_MESH_SUPPORT
+			light_SendMeshBroadcastCmd(duty[0],duty[1],duty[2],duty[3],duty[4],1000);
+			#endif
         }else{
             if(check_pwm_duty_zero()){
-                light_set_aim(0,0,0,22222,22222,1000,0);
+                light_set_color(0,0,0,22222,22222,1000);
+				#if ESP_MESH_SUPPORT
+				if(broadcast_if){
+					light_SendMeshBroadcastCmd(0,0,0,22222,22222,1000);
+				}
+				#endif
             }else{
                 //light_shadeStart(HINT_WHITE,500,1,1,NULL);
             }
         }
 		if(add_if){
             os_timer_disarm(&shut_down_t);
-            os_timer_setfn(&shut_down_t,light_TimerCheck,NULL);
+            os_timer_setfn(&shut_down_t,light_TimerCheck,(void*)broadcast_if);
             os_timer_arm(&shut_down_t,t,1);
 		}
     }

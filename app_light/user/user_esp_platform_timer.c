@@ -13,17 +13,8 @@
 #include "mem.h"
 #include "osapi.h"
 #include "user_interface.h"
-
 #include "espconn.h"
 #include "user_esp_platform.h"
-
-#define ESP_DEBUG
-
-#ifdef ESP_DEBUG
-#define ESP_DBG os_printf
-#else
-#define ESP_DBG
-#endif
 
 LOCAL os_timer_t device_timer;
 uint32 min_wait_second;

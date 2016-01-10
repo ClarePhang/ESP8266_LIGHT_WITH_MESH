@@ -13,6 +13,7 @@
 #include "osapi.h"
 #include "mem.h"
 #include "user_interface.h"
+#include "ip_addr.h"
 
 #include "user_iot_version.h"
 #include "espconn.h"
@@ -25,10 +26,16 @@
 //csc
 #include "user_simplepair.h"
 #include"user_espnow_action.h"
+#include "user_light_mesh.h"
 
 #if ESP_PLATFORM
 #include "user_esp_platform.h"
 #endif
+
+#if ESP_DEBUG_MODE
+#include "user_debug.h"
+#endif
+
 
 #if LIGHT_DEVICE
 #include "user_light.h"
@@ -51,7 +58,10 @@ uint8 upgrade_lock = 0;
 #if ESP_MESH_SUPPORT 
 #include "mesh.h"
 char *sip = NULL, *sport = NULL, *smac = NULL;
+char pair_sip[1+ESP_MESH_JSON_IP_ELEM_LEN];
+char pair_sport[1+ESP_MESH_JSON_PORT_ELEM_LEN];
 #endif
+
 /*
  csc add
 */
@@ -248,25 +258,25 @@ light_status_get(struct jsontree_context *js_ctx)
     const char *path = jsontree_path_name(js_ctx, js_ctx->depth - 1);
 
     if (os_strncmp(path, "red", 3) == 0) {
-        jsontree_write_int(js_ctx, user_light_get_duty(LIGHT_RED));
+        jsontree_write_int(js_ctx, light_param_target.pwm_duty[0]);
     } else if (os_strncmp(path, "green", 5) == 0) {
-        jsontree_write_int(js_ctx, user_light_get_duty(LIGHT_GREEN));
+        jsontree_write_int(js_ctx, light_param_target.pwm_duty[1]);
     } else if (os_strncmp(path, "blue", 4) == 0) {
-        jsontree_write_int(js_ctx, user_light_get_duty(LIGHT_BLUE));
+        jsontree_write_int(js_ctx, light_param_target.pwm_duty[2]);
     } else if (os_strncmp(path, "wwhite", 6) == 0) {
         if(PWM_CHANNEL>LIGHT_WARM_WHITE){
-            jsontree_write_int(js_ctx, user_light_get_duty(LIGHT_WARM_WHITE));
+            jsontree_write_int(js_ctx, light_param_target.pwm_duty[3]);
         }else{
             jsontree_write_int(js_ctx, 0);
         }
     } else if (os_strncmp(path, "cwhite", 6) == 0) {
         if(PWM_CHANNEL>LIGHT_COLD_WHITE){
-            jsontree_write_int(js_ctx, user_light_get_duty(LIGHT_COLD_WHITE));
+            jsontree_write_int(js_ctx, light_param_target.pwm_duty[4]);
         }else{
             jsontree_write_int(js_ctx, 0);
         }
     } else if (os_strncmp(path, "period", 6) == 0) {
-        jsontree_write_int(js_ctx, user_light_get_period());
+        jsontree_write_int(js_ctx, light_param_target.pwm_period);
     }
     return 0;
 }
@@ -289,48 +299,48 @@ light_status_set(struct jsontree_context *js_ctx, struct jsonparse_state *parser
                 jsonparse_next(parser);
                 status = jsonparse_get_value_as_int(parser);
                 r=status;
-                os_printf("R: %d \n",status);
+                WEB_DBG("R: %d \n",status);
             } else if (jsonparse_strcmp_value(parser, "green") == 0) {
                 uint32 status;
                 jsonparse_next(parser);
                 jsonparse_next(parser);
                 status = jsonparse_get_value_as_int(parser);
                 g=status;
-                os_printf("G: %d \n",status);
+                WEB_DBG("G: %d \n",status);
             } else if (jsonparse_strcmp_value(parser, "blue") == 0) {
                 uint32 status;
                 jsonparse_next(parser);
                 jsonparse_next(parser);
                 status = jsonparse_get_value_as_int(parser);
                 b=status;
-                os_printf("B: %d \n",status);
+                WEB_DBG("B: %d \n",status);
             } else if (jsonparse_strcmp_value(parser, "cwhite") == 0) {
                 uint32 status;
                 jsonparse_next(parser);
                 jsonparse_next(parser);
                 status = jsonparse_get_value_as_int(parser);
                 cw=status;
-                os_printf("CW: %d \n",status);
+                WEB_DBG("CW: %d \n",status);
             } else if (jsonparse_strcmp_value(parser, "wwhite") == 0) {
                 uint32 status;
                 jsonparse_next(parser);
                 jsonparse_next(parser);
                 status = jsonparse_get_value_as_int(parser);
                 ww=status;
-                os_printf("WW: %d \n",status);
+                WEB_DBG("WW: %d \n",status);
             } else if (jsonparse_strcmp_value(parser, "period") == 0) {
                 uint32 status;
                 jsonparse_next(parser);
                 jsonparse_next(parser);
                 status = jsonparse_get_value_as_int(parser);
-                os_printf("PERIOD: %d \n",status);
+                WEB_DBG("PERIOD: %d \n",status);
                 period=status;
             }else if (jsonparse_strcmp_value(parser, "response") == 0) {
                 uint32 status;
                 jsonparse_next(parser);
                 jsonparse_next(parser);
                 status = jsonparse_get_value_as_int(parser);
-                os_printf("rspneed: %d \n",status);
+                WEB_DBG("rspneed: %d \n",status);
                 PostCmdNeeRsp = status;
             }
         }
@@ -340,12 +350,12 @@ light_status_set(struct jsontree_context *js_ctx, struct jsonparse_state *parser
 
     }else{
         if(light_sleep_flg==1){
-            os_printf("modem sleep en\r\n");
+            WEB_DBG("modem sleep en\r\n");
             wifi_set_sleep_type(MODEM_SLEEP_T);
             light_sleep_flg =0;
         }
     }
-   light_set_aim(r,g,b,cw,ww,period,ctrl_mode);
+   light_set_color(r,g,b,cw,ww,period);
     return 0;
 }
 
@@ -413,7 +423,7 @@ csc add
 int ICACHE_FLASH_ATTR
 button_status_set(struct jsontree_context *js_ctx, struct jsonparse_state *parser)
 {
-    os_printf("---button set----\n");
+    WEB_DBG("---button set----\n");
     int type;
     uint8 mdev_mac_address[13]={0};
     uint32 replace=0;
@@ -431,7 +441,7 @@ button_status_set(struct jsontree_context *js_ctx, struct jsonparse_state *parse
                 jsonparse_next(parser);
                 jsonparse_next(parser);
                 jsonparse_copy_value(parser, mdev_mac_address, sizeof(mdev_mac_address));
-                os_printf("mdev_mac_address: %s \n",mdev_mac_address);
+                WEB_DBG("mdev_mac_address: %s \n",mdev_mac_address);
             } 
             else if (jsonparse_strcmp_value(parser, "temp_key") == 0) {
                 jsonparse_next(parser);
@@ -444,17 +454,17 @@ button_status_set(struct jsontree_context *js_ctx, struct jsonparse_state *parse
                     os_bzero(tmp,sizeof(tmp));
                     os_memcpy(tmp,ptmp,2);
                     uint8 val = strtol(tmp,NULL,16);
-                    os_printf("val[%d]: %02x \r\n",j,val);
+                    WEB_DBG("val[%d]: %02x \r\n",j,val);
                     buttonPairingInfo.tempkey[j] = val;
                     ptmp+=2;
                 }
-                os_printf("tempkey: %s\n",tempkey,js_ctx->depth);
+                WEB_DBG("tempkey: %s\n",tempkey,js_ctx->depth);
             } 
             else if (jsonparse_strcmp_value(parser, "button_mac") == 0) {
                 jsonparse_next(parser);
                 jsonparse_next(parser);
                 jsonparse_copy_value(parser, button_address, sizeof(button_address));
-                os_printf("button_mac: %s \n",button_address);
+                WEB_DBG("button_mac: %s \n",button_address);
                 //os_memcpy(buttonPairingInfo.button_mac_p,button_address,sizeof(button_address));
                 int j;
                 char tmp[4];
@@ -463,7 +473,7 @@ button_status_set(struct jsontree_context *js_ctx, struct jsonparse_state *parse
                     os_bzero(tmp,sizeof(tmp));
                     os_memcpy(tmp,ptmp,2);
                     uint8 val = strtol(tmp,NULL,16);
-                    os_printf("val[%d]: %02x \r\n",j,val);
+                    WEB_DBG("val[%d]: %02x \r\n",j,val);
                     buttonPairingInfo.button_mac[j] = val;
                     ptmp+=2;
                 }
@@ -472,29 +482,29 @@ button_status_set(struct jsontree_context *js_ctx, struct jsonparse_state *parse
                 jsonparse_next(parser);
                 jsonparse_next(parser);
                 replace = jsonparse_get_value_as_int(parser);
-                os_printf("replace=%d\n",replace);
+                WEB_DBG("replace=%d\n",replace);
             }
             else if (jsonparse_strcmp_value(parser, "mac_len") == 0) {
                 jsonparse_next(parser);
                 jsonparse_next(parser);
                 mac_len = jsonparse_get_value_as_int(parser);
-                os_printf("mac_len=%d\n",mac_len);
+                WEB_DBG("mac_len=%d\n",mac_len);
             }else if(jsonparse_strcmp_value(parser, "test") == 0){
                 jsonparse_next(parser);
                 jsonparse_next(parser);
                 jsonparse_copy_value(parser, mac, sizeof(mac));
-                os_printf("test: %s \n",mac);
+                WEB_DBG("test: %s \n",mac);
             }
         
         }
     }
-    os_printf("Type=%d\n",type);
+    WEB_DBG("Type=%d\n",type);
     return 1;
 }
 
 int ICACHE_FLASH_ATTR button_status_get(struct jsontree_context *js_ctx)
 {
-   os_printf("button get\n");
+   WEB_DBG("button get\n");
    return 1;
 }
 
@@ -528,7 +538,7 @@ user_change_func_map(struct jsontree_context *js_ctx, struct jsonparse_state *pa
 {
     static uint8 cnt = 0;
     
-    os_printf("---user_change_func_map----cnt: %d \n",cnt++);
+    WEB_DBG("---user_change_func_map----cnt: %d \n",cnt++);
     int type;
     int fun_pos=0;
     uint8 func[13]={0};
@@ -547,6 +557,13 @@ user_change_func_map(struct jsontree_context *js_ctx, struct jsonparse_state *pa
     //char key_val_chr[MAX_COMMAND_COUNT]={'1','2','3','4','U','D','L','R'};
     while ((type = jsonparse_next(parser)) != 0) {
         if (type == JSON_TYPE_PAIR_NAME){
+            if (jsonparse_strcmp_value(parser, "response") == 0) {
+                jsonparse_next(parser);
+                jsonparse_next(parser);
+                PostCmdNeeRsp = jsonparse_get_value_as_int(parser);
+                WEB_DBG("rspneed: %d \n",PostCmdNeeRsp);
+            }
+            
             for(i=0;i<MAX_COMMAND_COUNT;i++){
 				
                 key_value=i+1;
@@ -557,7 +574,7 @@ user_change_func_map(struct jsontree_context *js_ctx, struct jsonparse_state *pa
                     jsonparse_next(parser);
                     jsonparse_next(parser);
                     jsonparse_copy_value(parser, func, sizeof(func));
-                    os_printf("key %c shortpress: %s \n",key_tag[i],func);
+                    WEB_DBG("key %c shortpress: %s \n",key_tag[i],func);
                     cmd_type = SHORT_PRESS;
                     cmd_idx = i;
                     if(os_strcmp(func,"nil")==0){
@@ -566,7 +583,7 @@ user_change_func_map(struct jsontree_context *js_ctx, struct jsonparse_state *pa
                     else if((fun_pos=UserGetCorrespondFunction(func))>=0){
                         EspnowActionTmp.user_short_press_func_pos=fun_pos;
                     }else{
-                        os_printf("err,in %d SHORT\r\n",i);
+                        WEB_DBG("err,in %d SHORT\r\n",i);
                         err_flg = 1;
                     }
 					break;
@@ -578,7 +595,7 @@ user_change_func_map(struct jsontree_context *js_ctx, struct jsonparse_state *pa
                     jsonparse_next(parser);
                     jsonparse_next(parser);
                     jsonparse_copy_value(parser, short_arg, sizeof(short_arg));
-                    os_printf("arg%ctap param: %s \n",key_tag[i],short_arg);
+                    WEB_DBG("arg%ctap param: %s \n",key_tag[i],short_arg);
                     param_flg = 1;
 					break;
                 } 
@@ -589,7 +606,7 @@ user_change_func_map(struct jsontree_context *js_ctx, struct jsonparse_state *pa
                     jsonparse_next(parser);
                     jsonparse_next(parser);
                     jsonparse_copy_value(parser, func, sizeof(func));
-                    os_printf("key %c longpress: %s \n",key_tag[i],func);
+                    WEB_DBG("key %c longpress: %s \n",key_tag[i],func);
                     cmd_type = LONG_PRESS;
                     cmd_idx = i;
                     if(os_strcmp(func,"nil")==0){
@@ -598,7 +615,7 @@ user_change_func_map(struct jsontree_context *js_ctx, struct jsonparse_state *pa
                     else if((fun_pos=UserGetCorrespondFunction(func))>=0){
                         EspnowActionTmp.user_long_press_func_pos=fun_pos;
                     }else{
-                        os_printf("err,in %d LONG\r\n",i);
+                        WEB_DBG("err,in %d LONG\r\n",i);
                         err_flg = 1;
                     }
 					break;
@@ -610,42 +627,56 @@ user_change_func_map(struct jsontree_context *js_ctx, struct jsonparse_state *pa
                     jsonparse_next(parser);
                     jsonparse_next(parser);
                     jsonparse_copy_value(parser, long_arg, sizeof(long_arg));
-                    os_printf("arg%cpress param: %s \n",key_tag[i],long_arg);
+                    WEB_DBG("arg%cpress param: %s \n",key_tag[i],long_arg);
                     param_flg = 1;
                     //if(fun_pos>=0)UserGetCmdParam(fun_pos,long_arg,&esp_now_cmd_param[i][LONG_PRESS]);
                     break;
                 } 
             }
+			
+			if(err_flg){
+				WEB_DBG("cmd error..\r\n");
+				return -1;
+			}
+
+			
+			if(cmd_idx>=0 && cmd_type>=0 && param_flg>=0){
+        	   WEB_DBG("==============\r\n");
+        	   WEB_DBG("cmd_type: %d \r\n",cmd_type);
+        	   WEB_DBG("cmd_idx: %d \r\n",cmd_idx);
+
+        	   if((uint32)cmd_type == LONG_PRESS) WEB_DBG("LONG param: %s \r\n",long_arg);
+        	   if((uint32)cmd_type == SHORT_PRESS) WEB_DBG("SHORT param: %s \r\n",short_arg);
+        	   WEB_DBG("==============\r\n");
+        	   if((uint32)cmd_type == LONG_PRESS){
+        		   if(UserGetCmdParam(EspnowActionTmp.user_long_press_func_pos,long_arg, &userActionParam.userAction[cmd_idx].press_arg[1])){
+                       userActionParam.userAction[cmd_idx].user_long_press_func_pos= EspnowActionTmp.user_long_press_func_pos;
+                       //user_EspnowActionParamSave(&userActionParam);
+                       WEB_DBG("L:UserGetCmdParam saved....\r\n");
+        		   }else{
+                       WEB_DBG("L:UserGetCmdParam error....\r\n");
+        		   	}
+        	   }else if((uint32)cmd_type == SHORT_PRESS){
+        		   if(UserGetCmdParam(EspnowActionTmp.user_short_press_func_pos,short_arg, &userActionParam.userAction[cmd_idx].press_arg[0])){
+            		   userActionParam.userAction[cmd_idx].user_short_press_func_pos = EspnowActionTmp.user_short_press_func_pos;
+            		   //user_EspnowActionParamSave(&userActionParam);
+        			   WEB_DBG("S:UserGetCmdParam saved....\r\n");
+        		   }else{
+                       WEB_DBG("S:UserGetCmdParam error....\r\n");
+        		   }
+        	   }
+       		   cmd_idx = -1;
+			   cmd_type = -1;
+			   param_flg = -1;
+           }
+
+			   
         }
     }
-    // os_printf("Type=%d\n",type);
-   if(err_flg){
-	   os_printf("cmd error..\r\n");
-	   return -1;
-   }
+    // WEB_DBG("Type=%d\n",type);
+   user_EspnowActionParamSave(&userActionParam);
    
-   if(cmd_idx>=0 && cmd_type>=0 && param_flg>=0){
-	   os_printf("==============\r\n");
-	   os_printf("cmd_type: %d \r\n",cmd_type);
-	   os_printf("cmd_idx: %d \r\n",cmd_idx);
-	   if((uint32)cmd_type == LONG_PRESS) os_printf("LONG param: %s \r\n",long_arg);
-	   if((uint32)cmd_type == SHORT_PRESS) os_printf("SHORT param: %s \r\n",short_arg);
-	   os_printf("==============\r\n");
-	   if((uint32)cmd_type == LONG_PRESS){
-		   if(UserGetCmdParam(EspnowActionTmp.user_long_press_func_pos,long_arg, &userActionParam.userAction[cmd_idx].press_arg[1])){
-               userActionParam.userAction[cmd_idx].user_long_press_func_pos= EspnowActionTmp.user_long_press_func_pos;
-               user_EspnowActionParamSave(&userActionParam);
-		   }
-	   }else if((uint32)cmd_type == SHORT_PRESS){
-		   if(UserGetCmdParam(EspnowActionTmp.user_short_press_func_pos,short_arg, &userActionParam.userAction[cmd_idx].press_arg[0])){
-    		   userActionParam.userAction[cmd_idx].user_short_press_func_pos = EspnowActionTmp.user_short_press_func_pos;
-    		   user_EspnowActionParamSave(&userActionParam);
-		   }else{
-               os_printf("UserGetCmdParam error....\r\n");
-		   	}
-	   }
-   
-   }
+
     return 1;
 }
 
@@ -653,7 +684,7 @@ user_change_func_map(struct jsontree_context *js_ctx, struct jsonparse_state *pa
 LOCAL int ICACHE_FLASH_ATTR
 user_get_func_map(struct jsontree_context *js_ctx)
 {
-	os_printf("in user_get_func_map\r\n");
+	WEB_DBG("in user_get_func_map\r\n");
     const char *path = jsontree_path_name(js_ctx, js_ctx->depth - 1);
 
 	char tag_tmp[20];
@@ -668,7 +699,7 @@ user_get_func_map(struct jsontree_context *js_ctx)
 		os_sprintf(tag_tmp,"tap%c",key_val_chr[i]);
         if(os_strncmp(path, tag_tmp, os_strlen(tag_tmp))==0){//find the function
             idx = userActionParam.userAction[i].user_short_press_func_pos;
-            os_printf("find tag_tmp: %s\r\n",tag_tmp);
+            WEB_DBG("find tag_tmp: %s\r\n",tag_tmp);
 			if(idx>=0) os_sprintf(str_tmp,"%s",fun_tag[idx].Tag);
 			else os_sprintf(str_tmp,"nil");
             jsontree_write_string(js_ctx, str_tmp);
@@ -678,7 +709,7 @@ user_get_func_map(struct jsontree_context *js_ctx)
 		os_sprintf(tag_tmp,"arg%ctap",key_val_chr[i]);
         if(os_strncmp(path, tag_tmp, os_strlen(tag_tmp))==0){//find  tap param     
             idx = userActionParam.userAction[i].user_short_press_func_pos;
-            os_printf("find tag_tmp: %s\r\n",tag_tmp);
+            WEB_DBG("find tag_tmp: %s\r\n",tag_tmp);
             os_sprintf(str_tmp,"%s",tag_tmp);
 			jsontree_write_string(js_ctx, str_tmp);
 			break;
@@ -687,7 +718,7 @@ user_get_func_map(struct jsontree_context *js_ctx)
 		os_sprintf(tag_tmp,"press%c",key_val_chr[i]);
         if(os_strncmp(path, tag_tmp, os_strlen(tag_tmp))==0){//find the function
             idx = userActionParam.userAction[i].user_long_press_func_pos;
-            os_printf("find tag_tmp: %s\r\n",tag_tmp);
+            WEB_DBG("find tag_tmp: %s\r\n",tag_tmp);
 			if(idx>=0) os_sprintf(str_tmp,"%s",fun_tag[idx].Tag);
 			else os_sprintf(str_tmp,"nil");
         	jsontree_write_string(js_ctx, str_tmp);
@@ -697,42 +728,12 @@ user_get_func_map(struct jsontree_context *js_ctx)
 		os_sprintf(tag_tmp,"arg%cpress",key_val_chr[i]);
         if(os_strncmp(path, tag_tmp, os_strlen(tag_tmp))==0){//find press param
             idx = userActionParam.userAction[i].user_long_press_func_pos;
-            os_printf("find tag_tmp: %s\r\n",tag_tmp);
+            WEB_DBG("find tag_tmp: %s\r\n",tag_tmp);
         	os_sprintf(str_tmp,"%s",tag_tmp);
 			jsontree_write_string(js_ctx, str_tmp);
 			break;
         } 
     }
-    
-
-
-
-//==================================
-
-#if 0
-    if (os_strncmp(path, "red", 3) == 0) {
-        jsontree_write_int(js_ctx, user_light_get_duty(LIGHT_RED));
-    } else if (os_strncmp(path, "green", 5) == 0) {
-        jsontree_write_int(js_ctx, user_light_get_duty(LIGHT_GREEN));
-    } else if (os_strncmp(path, "blue", 4) == 0) {
-        jsontree_write_int(js_ctx, user_light_get_duty(LIGHT_BLUE));
-    } else if (os_strncmp(path, "wwhite", 6) == 0) {
-        if(PWM_CHANNEL>LIGHT_WARM_WHITE){
-            jsontree_write_int(js_ctx, user_light_get_duty(LIGHT_WARM_WHITE));
-        }else{
-            jsontree_write_int(js_ctx, 0);
-        }
-    } else if (os_strncmp(path, "cwhite", 6) == 0) {
-        if(PWM_CHANNEL>LIGHT_COLD_WHITE){
-            jsontree_write_int(js_ctx, user_light_get_duty(LIGHT_COLD_WHITE));
-        }else{
-            jsontree_write_int(js_ctx, 0);
-        }
-    } else if (os_strncmp(path, "period", 6) == 0) {
-        jsontree_write_int(js_ctx, user_light_get_period());
-    }
-#endif
-
     return 0;
 }
 
@@ -781,16 +782,11 @@ JSONTREE_OBJECT(USER_CHANGE_CMD_MAP,
          JSONTREE_PAIR("argRtap", &user_change_func_map_cb),
           JSONTREE_PAIR("pressR", &user_change_func_map_cb),
          JSONTREE_PAIR("argRpress", &user_change_func_map_cb),
+         
+         JSONTREE_PAIR("response", &user_change_func_map_cb),
 
 );
-//JSONTREE_OBJECT(USER_CHANGE_CMD_MAP,
-//	         JSONTREE_PAIR("action_info", &action_map_tree));
-
 #endif
-
-
-
-//=======================================
 JSONTREE_OBJECT(switch_desc,
                 JSONTREE_PAIR("mac", &switchstatus_callback),
                 JSONTREE_PAIR("status", &switchstatus_callback),
@@ -804,61 +800,73 @@ JSONTREE_OBJECT(BatteryTree,
 
 #endif
 
-
-
-
-
 #if ESP_MESH_SUPPORT
 LOCAL uint8 *MeshChildInfo = NULL;
 LOCAL uint8 *MeshParentInfo = NULL;
-LOCAL uint8 MeshChildrenNum = 0; 
-LOCAL uint8 MeshParentNum = 0; 
-LOCAL uint8 MeshNodeNum = 0;
+LOCAL uint16 MeshChildrenNum = -1; 
+LOCAL uint16 MeshParentNum = -1; 
+LOCAL uint16 MeshNodeNum = -1;
 
-LOCAL void mesh_update_topology(enum mesh_node_type type)
+LOCAL void ICACHE_FLASH_ATTR
+	mesh_clear_topology()
 {
-    MeshChildInfo = NULL;
-    MeshParentInfo = NULL;
-    MeshChildrenNum = 0; 
-    MeshParentNum = 0; 
-    int i;
+	MeshChildInfo = NULL;
+	MeshParentInfo = NULL;
+	MeshChildrenNum = -1; 
+	MeshParentNum = -1; 
+	MeshNodeNum = -1;
+}
 
+LOCAL void ICACHE_FLASH_ATTR
+	mesh_update_topology(enum mesh_node_type type)
+{
+    int i;
+	uint16 num_t;
+	int8 rssi;
     if(type==MESH_NODE_CHILD){
         int i;
         if (espconn_mesh_get_node_info(MESH_NODE_CHILD, &MeshChildInfo, &MeshChildrenNum)) {
-            os_printf("get child info success\n");
+            WEB_DBG("get child info success\n");
             if (MeshChildrenNum == 0) {
-                os_printf("no child\n");
-                MeshChildInfo = NULL;
-                MeshChildrenNum = 0;
+                WEB_DBG("no child\n");
             } else {
                // children represents the count of children.
                // you can read the child-information from child_info.
+               struct mesh_sub_node_info *p_child_tmp;
                for(i=0;i<MeshChildrenNum;i++){
-                   os_printf("MAC[%d]:"MACSTR"\r\n",i,MAC2STR(MeshChildInfo+i*6));
+				   p_child_tmp = (struct mesh_sub_node_info *)(MeshChildInfo+i*sizeof(struct mesh_sub_node_info));
+                   WEB_DBG("MAC[%d]:"MACSTR" ;NODE NUM: %d \r\n",i,MAC2STR(p_child_tmp->mac),p_child_tmp->sub_count);
                }
             }
         } else{
-            os_printf("get child info fail\n");
+            WEB_DBG("get child info fail\n");
         } 
     }else if(type==MESH_NODE_PARENT){
     
-        if (espconn_mesh_get_node_info(MESH_NODE_PARENT, &MeshParentInfo, &MeshParentNum)) {
-            os_printf("get parent info success\n");
+        if (espconn_mesh_get_node_info(MESH_NODE_PARENT, &MeshParentInfo, &num_t)) {
+			MeshParentNum = num_t&0xff;
+			rssi = (num_t>>8)&0xff;
+			
+            WEB_DBG("get parent info success\n");
             if (MeshParentNum == 0) {
-                os_printf("no parent\n");
-                MeshParentInfo = NULL;
-                MeshParentNum = 0;
+                WEB_DBG("no parent\n");
             } else {
                // children represents the count of children.
                // you can read the child-information from child_info.
                for(i=0;i<MeshParentNum;i++){
-                   os_printf("MAC[%d]:"MACSTR"\r\n",i,MAC2STR(MeshParentInfo+i*6));
+                   WEB_DBG("MAC[%d]:"MACSTR"\r\n",i,MAC2STR(MeshParentInfo+i*DEV_MAC_LEN));
                }
             }
         } else {
-            os_printf("get parent info fail\n");
+            WEB_DBG("get parent info fail\n");
         } 
+    }else if(type==MESH_NODE_ALL){
+        if(espconn_mesh_get_node_info(MESH_NODE_ALL, NULL, &MeshNodeNum)){
+            WEB_DBG("get sub node number success: %d \r\n",MeshNodeNum);
+        }else{
+            WEB_DBG("get sub node number fail\r\n");
+        }
+
     }
 }
 //---------------------------------------------------------
@@ -866,6 +874,21 @@ bool ICACHE_FLASH_ATTR mesh_root_if()
 {
     struct ip_info ipconfig;
     wifi_get_ip_info(STATION_IF, &ipconfig);
+	WEB_DBG("=====================\r\n\n");
+	WEB_DBG("in mesh_root_if: ip: "IPSTR" \r\n",IP2STR(&(ipconfig.ip)));
+	WEB_DBG("in mesh_root_if: netmask: "IPSTR"\r\n",IP2STR(&ipconfig.netmask));
+	WEB_DBG("in mesh_root_if: gateway: "IPSTR"\r\n",IP2STR(&ipconfig.gw));
+	WEB_DBG("=====================\r\n\n");
+	
+    struct ip_info apconfig;
+    wifi_get_ip_info(SOFTAP_IF, &apconfig);
+	WEB_DBG("=====================\r\n\n");
+	WEB_DBG("in mesh_root_if: ap ip: "IPSTR"\r\n",IP2STR(&apconfig.ip));
+	WEB_DBG("in mesh_root_if: ap netmask: "IPSTR"\r\n",IP2STR(&apconfig.netmask));
+	WEB_DBG("in mesh_root_if: ap gateway: "IPSTR"\r\n",IP2STR(&apconfig.gw));
+	WEB_DBG("=====================\r\n\n");
+    if(ipconfig.ip.addr == 0) return false;
+
     if(espconn_mesh_local_addr(&ipconfig.ip)) return false;
     else return true;
 }
@@ -875,25 +898,20 @@ static int ICACHE_FLASH_ATTR mesh_topology_get(struct jsontree_context *js_ctx) 
     os_memset(buf,0,sizeof(buf));
     const char *path = jsontree_path_name(js_ctx, js_ctx->depth-1);
     int idx=js_ctx->index[js_ctx->depth-2];
-    os_printf("=================================\r\n");
-    os_printf("mesh topology idx: %d \r\n",idx);
-    os_printf("path: %s \r\n",path);
-    os_printf("depth: %d \r\n",js_ctx->depth);
-    os_printf("=================================\r\n");
+	struct mesh_sub_node_info *p_node_info;
+
+    //WEB_DBG("=================================\r\n");
+    //WEB_DBG("mesh topology idx: %d \r\n",idx);
+    //WEB_DBG("path: %s \r\n",path);
+    //WEB_DBG("depth: %d \r\n",js_ctx->depth);
+    //WEB_DBG("=================================\r\n");
     if (os_strcmp(path, "mac")==0 && js_ctx->depth == 3) {
         if(MeshParentInfo==NULL) mesh_update_topology(MESH_NODE_PARENT);
         if(MeshParentInfo){
-            if(mesh_root_if()){
-                os_sprintf(buf, MACSTR, MAC2STR(MeshParentInfo+DEV_MAC_LEN*idx) );
-                os_printf("MAC[%d]:"MACSTR"\r\n",idx,MAC2STR(MeshParentInfo+idx*6));
-                os_printf("prnt mac: %s \r\n",buf);
-                jsontree_write_string(js_ctx, buf);
-            }else{
-                os_sprintf(buf, MACSTR, 0x18,MAC2STR5BYTES(MeshParentInfo+DEV_MAC_LEN*idx) );
-                os_printf("MAC[%d]:"MACSTR"\r\n",idx,MAC2STR(MeshParentInfo+idx*6));
-                os_printf("prnt mac: %s \r\n",buf);
-                jsontree_write_string(js_ctx, buf);
-            }
+            os_sprintf(buf, MACSTR, MAC2STR(MeshParentInfo+DEV_MAC_LEN*idx) );
+            WEB_DBG("MAC[%d]:"MACSTR"\r\n",idx,MAC2STR(MeshParentInfo+idx*DEV_MAC_LEN));
+            WEB_DBG("prnt mac: %s \r\n",buf);
+            jsontree_write_string(js_ctx, buf);
         }else{
             jsontree_write_string(js_ctx, "None");
         }
@@ -908,19 +926,27 @@ static int ICACHE_FLASH_ATTR mesh_topology_get(struct jsontree_context *js_ctx) 
 
     }else if(os_strcmp(path, "type")==0 && js_ctx->depth == 2){
         jsontree_write_string(js_ctx, "Light");//LIGHT ONLY , JUST FOR NOW
-
     }else if (os_strcmp(path, "mac")==0 && js_ctx->depth == 4) {
-        //jsontree_write_int(js_ctx, mv);
         if(MeshChildInfo==NULL) mesh_update_topology(MESH_NODE_CHILD);
         if(MeshChildInfo!=NULL && idx<MeshChildrenNum ){
-            os_sprintf(buf, MACSTR, 0x18,MAC2STR5BYTES(MeshChildInfo+DEV_MAC_LEN*idx) );
-            os_printf("MAC[%d]:"MACSTR"\r\n",idx,MAC2STR(MeshChildInfo+idx*6));
-            os_printf("prnt mac: %s \r\n",buf);
+			p_node_info = (struct mesh_sub_node_info *)(MeshChildInfo+(sizeof(struct mesh_sub_node_info))*idx);
+            os_sprintf(buf, MACSTR,MAC2STR(p_node_info->mac));
+            WEB_DBG("MAC[%d]:"MACSTR"\r\n",idx,MAC2STR(p_node_info->mac));
+            WEB_DBG("prnt mac: %s \r\n",buf);
             jsontree_write_string(js_ctx, buf);
         }else{
             jsontree_write_string(js_ctx, "None");
         }
-    }else if(os_strcmp(path, "num")==0){
+    }else if (os_strcmp(path, "num")==0 && js_ctx->depth == 4) {
+        if(MeshChildInfo==NULL) mesh_update_topology(MESH_NODE_CHILD);
+        if(MeshChildInfo!=NULL && idx<MeshChildrenNum ){
+    		p_node_info = (struct mesh_sub_node_info *)(MeshChildInfo+(sizeof(struct mesh_sub_node_info))*idx);
+    		WEB_DBG("NODE NUM: %d \r\n",p_node_info->sub_count);
+    		jsontree_write_int(js_ctx, p_node_info->sub_count);
+        }else{
+			jsontree_write_int(js_ctx, 0);
+        }
+	}else if(os_strcmp(path, "num")==0){
         espconn_mesh_get_node_info(MESH_NODE_ALL, NULL, &MeshNodeNum);
         jsontree_write_int(js_ctx, MeshNodeNum);
     }
@@ -934,7 +960,8 @@ JSONTREE_OBJECT(mesh_parent_tree,
                 JSONTREE_PAIR("mac", &mesh_topology_callback));
 JSONTREE_OBJECT(mesh_child_desc,
                 JSONTREE_PAIR("type", &mesh_topology_callback),
-                JSONTREE_PAIR("mac", &mesh_topology_callback));
+                JSONTREE_PAIR("mac", &mesh_topology_callback),
+                JSONTREE_PAIR("num", &mesh_topology_callback));
 JSONTREE_ARRAY(mesh_child_tree,
                 JSONTREE_PAIR_ARRAY(&mesh_child_desc),
                 JSONTREE_PAIR_ARRAY(&mesh_child_desc),
@@ -951,6 +978,51 @@ JSONTREE_OBJECT(mesh_info_tree,
                 JSONTREE_PAIR("children", &mesh_child_tree),);
 JSONTREE_OBJECT(MeshInfoTree,
                 JSONTREE_PAIR("mesh_info", &mesh_info_tree));
+
+
+
+LOCAL int ICACHE_FLASH_ATTR
+mesh_sengding_status_set(struct jsontree_context *js_ctx, struct jsonparse_state *parser)
+{
+    int type;
+    while ((type = jsonparse_next(parser)) != 0) {
+        if (type == JSON_TYPE_PAIR_NAME) {
+            if (jsonparse_strcmp_value(parser, "mesh_send_sta") == 0) {
+                uint8 status;
+                jsonparse_next(parser);
+                jsonparse_next(parser);
+                status = jsonparse_get_value_as_int(parser);
+ 	            WEB_DBG("mesh sending update status: %d \r\n",status);
+				if(status == ESP_LOCAL_ACTIVE){
+                    WEB_DBG("status ESP_LOCAL_ACTIVE\r\n");
+					espSendSetStatus(status);
+					espconn_mesh_release_congest();
+				}else if(status == ESP_SERVER_ACTIVE){
+                    WEB_DBG("status ESP_SERVER_ACTIVE\r\n");
+					espSendSetStatus(status);
+				}else{
+                    WEB_DBG("unknown status: %d \r\n",status);
+				}
+            }else if (jsonparse_strcmp_value(parser, "response") == 0) {
+                uint32 resp;
+                jsonparse_next(parser);
+                jsonparse_next(parser);
+                resp = jsonparse_get_value_as_int(parser);
+                WEB_DBG("rspneed: %d \n",resp);
+                PostCmdNeeRsp = resp;
+            }
+        }
+    }
+    return 0;
+}
+
+LOCAL struct jsontree_callback mesh_send_status_callback =
+    JSONTREE_CALLBACK(NULL, mesh_sengding_status_set);
+
+JSONTREE_OBJECT(mesh_send_status_tree,
+                JSONTREE_PAIR("mesh_send_sta", &mesh_send_status_callback));
+JSONTREE_OBJECT(MeshSendQueueStatusTree,
+                JSONTREE_PAIR("meshSendStatus", &mesh_send_status_tree));
 
 #endif
 /******************************************************************************
@@ -1150,7 +1222,7 @@ wifi_softap_set(struct jsontree_context *js_ctx, struct jsonparse_state *parser)
                         ap_conf->authmode = AUTH_OPEN;
                     } else if (os_strcmp(buffer, "WPAPSK") == 0) {
                         ap_conf->authmode = AUTH_WPA_PSK;
-                        os_printf("%d %s\n", ap_conf->authmode, buffer);
+                        WEB_DBG("%d %s\n", ap_conf->authmode, buffer);
                     } else if (os_strcmp(buffer, "WPA2PSK") == 0) {
                         ap_conf->authmode = AUTH_WPA2_PSK;
                     } else if (os_strcmp(buffer, "WPAPSK/WPA2PSK") == 0) {
@@ -1342,7 +1414,7 @@ parse_url(char *precv, URL_Frame *purl_frame)
         str = (char *)os_strstr(pbuffer, "/");
         
         if(str){
-            os_printf("str,%p\r\n",str);
+            WEB_DBG("str,%p\r\n",str);
             char* str_tmp=str+1;
             char* str_limit = (char*)os_strstr(pbuffer," HTTP");
             if( str_limit && ((char*)os_strstr(pbuffer,"?")==NULL || (char*)os_strstr(pbuffer,"=")==NULL)){
@@ -1350,7 +1422,7 @@ parse_url(char *precv, URL_Frame *purl_frame)
             }else{
                 while(true){
                     str_tmp = (char *)os_strstr(str_tmp, "/");
-                    os_printf("i,%p\r\n",str_tmp);
+                    WEB_DBG("i,%p\r\n",str_tmp);
                     if(str_tmp && str_limit && str_tmp<str_limit){
                         str = str_tmp;
                     }
@@ -1360,7 +1432,7 @@ parse_url(char *precv, URL_Frame *purl_frame)
                     str_tmp ++;
                 }
             }
-            os_printf("o,str:%p\r\n",str);
+            WEB_DBG("o,str:%p\r\n",str);
             
             length = str - pbuffer + 1;
             os_memcpy(purl_frame->pPath,pbuffer,length);
@@ -1487,7 +1559,7 @@ check_data(char *precv, uint16 length)
             if (tmp_precvbuffer != NULL){
                 os_memcpy(length_buf, pdata, tmp_precvbuffer - pdata);
                 dat_sumlength = atoi(length_buf);
-                os_printf("A_dat:%u,tot:%u,lenght:%u\n",dat_sumlength,tmp_totallength,tmp_length);
+                WEB_DBG("A_dat:%u,tot:%u,lenght:%u\n",dat_sumlength,tmp_totallength,tmp_length);
                 if(dat_sumlength != tmp_totallength){
                     return false;
                 }
@@ -1573,6 +1645,35 @@ restart_10ms_cb(void *arg)
 LOCAL void ICACHE_FLASH_ATTR
 data_send(void *arg, bool responseOK, char *psend)
 {
+#if 1
+    WEB_DBG("data send.\r\n");
+    struct espconn *ptrespconn = arg;
+	WEB_DBG("1\r\n");
+	#if MESH_HEADER_MODE
+	if(espconn_mesh_get_status() == MESH_DISABLE 
+		#if ESP_DEBUG_MODE
+		&& DEBUG_FLG == true
+		#endif
+		){
+        WEB_DBG("DEBUG MODE...\r\n");
+		//res = espSendEnq(p_data_send, length, ptrespconn, ESP_DATA,TO_LOCAL,espSendGetRingbuf());
+        data_send_buf(ptrespconn, responseOK, psend,(psend?os_strlen(psend):0),NULL,0,NULL,NULL,false);
+	}else{
+    	struct mesh_header_format* mesh_header = (struct mesh_header_format*)ptrespconn->reverse;
+    	uint8* src_addr = NULL;//,*dst_addr = NULL;
+    	bool res = espconn_mesh_get_src_addr(mesh_header,&src_addr);
+    	//espconn_mesh_get_dst_addr(mesh_header,&dst_addr);	
+    	WEB_DBG("dst: "MACSTR"\r\n",MAC2STR(src_addr));
+    	WEB_DBG("src: "MACSTR"\r\n",MAC2STR(mesh_src_addr));
+        data_send_buf(ptrespconn, responseOK, psend,(psend?os_strlen(psend):0),NULL,0,mesh_src_addr,src_addr,false);
+	}
+    #else
+    data_send_buf(ptrespconn, responseOK, psend,os_strlen(psend),NULL,0,NULL,NULL,false);
+	#endif
+
+
+
+#else
     uint16 length = 0;
     char *pbuf = NULL;
     char httphead[256];
@@ -1600,12 +1701,88 @@ data_send(void *arg, bool responseOK, char *psend)
 Content-Length: 0\r\nServer: lwIP/1.4.0\r\n\n");
         length = os_strlen(httphead);
     }
+
+	bool queue_empty = espSendQueueIsEmpty(espSendGetRingbuf());
+	WEB_DBG("send in data_send\r\n");
+	uint8* p_data_send;
+	if(psend){
+		p_data_send = pbuf;
+	}else{
+		p_data_send = httphead;
+	}
+
+
+    #if MESH_HEADER_MODE
+	if(espconn_mesh_get_status() == MESH_DISABLE && DEBUG_FLG == true){
+        WEB_DBG("DEBUG MODE...\r\n");
+		res = espSendEnq(p_data_send, length, ptrespconn, ESP_DATA,TO_LOCAL,espSendGetRingbuf());
+	}else{
+		struct mesh_header_format* mesh_header = (struct mesh_header_format*)ptrespconn->reverse;;
+		uint8* src_addr = NULL;//,*dst_addr = NULL;
+		espconn_mesh_get_src_addr(mesh_header,&src_addr);
+		//espconn_mesh_get_dst_addr(mesh_header,&dst_addr);
+
+
+		WEB_DBG("dst: "MACSTR"\r\n",MAC2STR(src_addr));
+		WEB_DBG("src: "MACSTR"\r\n",MAC2STR(mesh_src_addr));
+		
+    	mesh_header = (struct mesh_header_format*)espconn_mesh_create_packet( src_addr,//uint8_t *dst_addr
+			                                                                  mesh_src_addr,//uint8_t *src_addr,
+			                                                                  false, //bool p2p,
+			                                                                  true,  //bool piggyback_cr
+			                                                                  M_PROTO_HTTP, //enum mesh_usr_proto_type proto
+			                                                                  length, //uint16_t data_len
+			                                                                  false,  //bool option
+			                                                                  0, //uint16_t ot_len
+			                                                                  false, //bool frag
+			                                                                  0,  //enum mesh_option_type frag_type
+			                                                                  false, //bool mf
+			                                                                  0, //uint16_t frag_idx
+			                                                                  0 //uint16_t frag_id
+			                                                                  ); 
+    	if(!mesh_header){ 
+    		WEB_DBG("alloc resp packet fail,heap: %d\n",system_get_free_heap_size()); 
+        	return; 
+    	}
+    	
+    	if(!espconn_mesh_set_usr_data(mesh_header,p_data_send,length)){ 
+    		WEB_DBG("setuserdatafail\n"); 
+    		os_free(mesh_header); 
+    		return; 
+    	}
+		
+    	res = espSendEnq(mesh_header, mesh_header->len, ptrespconn, ESP_DATA,TO_LOCAL,espSendGetRingbuf());
+
+		
+		if(mesh_header) {
+			os_free(mesh_header);
+			mesh_header = NULL;
+		}
+	}
+	    
+	#else
+    	res = espSendEnq(p_data_send, length, ptrespconn, ESP_DATA,TO_LOCAL,espSendGetRingbuf());
+	#endif
+	
+	if(res==-1){
+		WEB_DBG("espconn send error , no buf in app...\r\n");
+	}
+	
+	/*send the packet if platform sending queue is empty*/
+	/*if not, espconn sendcallback would post another sending event*/
+	if(queue_empty){
+		system_os_post(ESP_SEND_TASK_PRIO, 0, (os_param_t)espSendGetRingbuf());
+	}
+	
+
+
+	#if 0
     if (psend) {
         bool queue_empty = espSendQueueIsEmpty(espSendGetRingbuf());
-        os_printf("send in data_send\r\n");
+        WEB_DBG("send in data_send\r\n");
         res = espSendEnq(pbuf, length, ptrespconn, ESP_DATA,TO_LOCAL,espSendGetRingbuf());
         if(res==-1){
-            os_printf("espconn send error , no buf in app...\r\n");
+            WEB_DBG("espconn send error , no buf in app...\r\n");
         }
         
         /*send the packet if platform sending queue is empty*/
@@ -1620,7 +1797,7 @@ Content-Length: 0\r\nServer: lwIP/1.4.0\r\n\n");
         bool queue_empty = espSendQueueIsEmpty(espSendGetRingbuf());
         res = espSendEnq(httphead, length, ptrespconn, ESP_DATA,TO_LOCAL,espSendGetRingbuf());
         if(res==-1){
-            os_printf("espconn send error , no buf in app...\r\n");
+            WEB_DBG("espconn send error , no buf in app...\r\n");
         }
         
         /*send the packet if platform sending queue is empty*/
@@ -1629,15 +1806,18 @@ Content-Length: 0\r\nServer: lwIP/1.4.0\r\n\n");
             system_os_post(ESP_SEND_TASK_PRIO, 0, (os_param_t)espSendGetRingbuf());
         }
     }
+	#endif
     if (pbuf) {
         os_free(pbuf);
         pbuf = NULL;
     }
+	
+#endif
 }
 
 
 void ICACHE_FLASH_ATTR
-data_send_buf(void *arg, bool responseOK, char *psend,uint16 d_len,char* url,uint16 url_len)
+data_send_buf(void *arg, bool responseOK, char *psend,uint16 d_len,char* url,uint16 url_len,uint8* src,uint8* dst,bool p2p_msg)
 {
     uint16 length = 0;
     char *pbuf = NULL;
@@ -1671,39 +1851,85 @@ data_send_buf(void *arg, bool responseOK, char *psend,uint16 d_len,char* url,uin
             length = os_strlen(httphead);
         }
     } else {
-        os_sprintf(httphead, "HTTP/1.0 400 BadRequest\r\n\
+        length = os_sprintf(httphead, "HTTP/1.0 400 BadRequest\r\n\
 Content-Length: 0\r\nServer: lwIP/1.4.0\r\n\n");
-        length = os_strlen(httphead);
+        //length = os_strlen(httphead);
     }
 
-    if (psend) {
-        bool queue_empty = espSendQueueIsEmpty(espSendGetRingbuf());
-        
-        res = espSendEnq(pbuf, length, ptrespconn, ESP_DATA,TO_LOCAL,espSendGetRingbuf());
-        if(res==-1){
-            os_printf("espconn send error , no buf in app...\r\n");
-        }
-        
-        /*send the packet if platform sending queue is empty*/
-        /*if not, espconn sendcallback would post another sending event*/
-        if(queue_empty){
-            system_os_post(ESP_SEND_TASK_PRIO, 0, (os_param_t)espSendGetRingbuf());
-        }
-    } else {
-        bool queue_empty = espSendQueueIsEmpty(espSendGetRingbuf());
-        os_printf("send in data_send_buf\r\n");
-        res = espSendEnq(httphead, length, ptrespconn, ESP_DATA,TO_LOCAL,espSendGetRingbuf());
-        if(res==-1){
-            os_printf("espconn send error , no buf in app...\r\n");
-        }
-        
-        /*send the packet if platform sending queue is empty*/
-        /*if not, espconn sendcallback would post another sending event*/
-        if(queue_empty){
-            system_os_post(ESP_SEND_TASK_PRIO, 0, (os_param_t)espSendGetRingbuf());
-        }
-    }
 
+#if 1
+	bool queue_empty = espSendQueueIsEmpty(espSendGetRingbuf());
+	uint8* p_data_send;
+	if(psend){
+		p_data_send = pbuf;
+	}else{
+		p_data_send = httphead;
+	}
+
+
+    #if MESH_HEADER_MODE
+	if(src==NULL && dst==NULL){
+		res = espSendEnq(p_data_send, length, ptrespconn, ESP_DATA,TO_LOCAL,espSendGetRingbuf());
+	}else{
+		struct mesh_header_format* mesh_header = NULL;//(struct mesh_header_format*)espconn->reverse;;
+		//uint8* src_addr = NULL,*dst_addr = NULL;
+		//espconn_mesh_get_src_addr(mesh_header,&src_addr);
+		//espconn_mesh_get_dst_addr(mesh_header,&dst_addr);
+
+
+		WEB_DBG("debug src: "MACSTR"\r\n",MAC2STR(src));
+		WEB_DBG("debug dst: "MACSTR"\r\n",MAC2STR(dst));
+		WEB_DBG("--------create---------\r\n");
+    	mesh_header = (struct mesh_header_format*)espconn_mesh_create_packet( dst,//uint8_t *dst_addr
+			                                                                  src,//uint8_t *src_addr,
+			                                                                  p2p_msg, //bool p2p,
+			                                                                  true,  //bool piggyback_cr
+			                                                                  M_PROTO_HTTP, //enum mesh_usr_proto_type proto
+			                                                                  length, //uint16_t data_len
+			                                                                  false,  //bool option
+			                                                                  0, //uint16_t ot_len
+			                                                                  false, //bool frag
+			                                                                  0,  //enum mesh_option_type frag_type
+			                                                                  false, //bool mf
+			                                                                  0, //uint16_t frag_idx
+			                                                                  0 //uint16_t frag_id
+			                                                                  ); 
+		WEB_DBG("----------------------\r\n");
+    	if(!mesh_header){ 
+    		WEB_DBG("alloc resp packet fail,heap: %d\n",system_get_free_heap_size()); 
+        	return; 
+    	}
+
+		WEB_DBG("dbg send data: %d : %s\r\n",length,p_data_send);
+    	if(!espconn_mesh_set_usr_data(mesh_header,p_data_send,length)){ 
+    		WEB_DBG("setuserdatafail\n"); 
+    		os_free(mesh_header); 
+    		return; 
+    	}
+	    res = espSendEnq(mesh_header, mesh_header->len, ptrespconn, ESP_DATA,TO_LOCAL,espSendGetRingbuf());
+		
+		if(mesh_header){
+            os_free(mesh_header);
+			mesh_header = NULL;
+		}
+	}
+	#else
+	res = espSendEnq(p_data_send, length, ptrespconn, ESP_DATA,TO_LOCAL,espSendGetRingbuf());
+	#endif
+
+	
+	
+	if(res==-1){
+		WEB_DBG("espconn send error , no buf in app...\r\n");
+	}
+	
+	/*send the packet if platform sending queue is empty*/
+	/*if not, espconn sendcallback would post another sending event*/
+	if(queue_empty){
+		system_os_post(ESP_SEND_TASK_PRIO, 0, (os_param_t)espSendGetRingbuf());
+	}
+
+#endif
     if (pbuf) {
         os_free(pbuf);
         pbuf = NULL;
@@ -1735,7 +1961,7 @@ void ICACHE_FLASH_ATTR json_build_packet(char *pbuf, ParmType ParmType)
     #endif
     #if ESP_MESH_SUPPORT
         case MESH_INFO:
-            mesh_update_topology(MESH_NODE_PARENT);
+            //mesh_update_topology(MESH_NODE_PARENT);
             json_ws_send((struct jsontree_value *)&MeshInfoTree, "mesh_info", pbuf);
             break;
     #endif
@@ -1800,8 +2026,8 @@ void ICACHE_FLASH_ATTR json_build_packet(char *pbuf, ParmType ParmType)
                         char ptrscanbuf[jsonSize];
                         char *pscanbuf = ptrscanbuf;
                         os_memset(ptrscanbuf, 0, jsonSize);
-                        os_sprintf(pscanbuf, ",\n\"ScanResult\": [\n");
-                        pscanbuf += os_strlen(pscanbuf);
+                        pscanbuf+=os_sprintf(pscanbuf, ",\n\"ScanResult\": [\n");
+                        //pscanbuf += os_strlen(pscanbuf);
 
                         for (i = 0; i < scancount; i ++) {
                             bss = STAILQ_FIRST(pscaninfo->pbss);
@@ -1925,7 +2151,8 @@ json_send(void *arg, ParmType ParmType)
     struct espconn *ptrespconn = arg;
     char* dev_mac = (char*)mesh_GetMdevMac();
     os_memset((void *)pbuf, 0, sizeof(pbuf));
-    
+
+	#if 0
     if (!sip || !sport) {
         json_build_packet(pbuf, ParmType);
         WEB_INFO("NO SIP ,NO SPORT ... \r\n");
@@ -1933,14 +2160,15 @@ json_send(void *arg, ParmType ParmType)
         data_send(ptrespconn, true, pbuf);
         return;
     }
-    
+    #endif
+	
     json_build_packet(pbuf, ParmType);
-    if (!mesh_json_add_elem(pbuf, jsonSize, sip, ESP_MESH_JSON_IP_ELEM_LEN)) return;
-    if (!mesh_json_add_elem(pbuf, jsonSize, sport, ESP_MESH_JSON_PORT_ELEM_LEN)) return;
+    //if (!mesh_json_add_elem(pbuf, jsonSize, sip, ESP_MESH_JSON_IP_ELEM_LEN)) return;
+    //if (!mesh_json_add_elem(pbuf, jsonSize, sport, ESP_MESH_JSON_PORT_ELEM_LEN)) return;
     if (!mesh_json_add_elem(pbuf, jsonSize, dev_mac, ESP_MESH_JSON_DEV_MAC_ELEM_LEN)) return;
-
-    WEB_INFO("SIP: %s\r\n",sip);
-    WEB_INFO("SPORT: %s\r\n",sport);
+    
+    //if(sip) WEB_INFO("SIP: %s\r\n",sip);
+    //if(sport) WEB_INFO("SPORT: %s\r\n",sport);
     WEB_INFO("dev_mac: %s\r\n",dev_mac);
     WEB_INFO("FIND SIP ,SPORT ... \r\n");
     WEB_INFO("DATA: \r\n%s \r\n",pbuf);
@@ -1970,7 +2198,7 @@ json_send(void *arg, ParmType ParmType)
 LOCAL void ICACHE_FLASH_ATTR
 response_send(void *arg, bool responseOK )
 {
-    os_printf("func response_send\r\n");
+    WEB_DBG("func response_send\r\n");
     #if ESP_MESH_SUPPORT
         
         struct espconn *ptrespconn = arg;
@@ -1978,15 +2206,17 @@ response_send(void *arg, bool responseOK )
         //const size_t len = ESP_MESH_JSON_IP_ELEM_LEN + ESP_MESH_JSON_PORT_ELEM_LEN + ESP_MESH_JSON_ROUTER_ELEM_LEN + 5;
         const size_t len = ESP_MESH_JSON_IP_ELEM_LEN + ESP_MESH_JSON_PORT_ELEM_LEN + +ESP_MESH_JSON_DEV_MAC_ELEM_LEN + 5;
         char pbuf[len];
+		#if 0
         if (!sip || !sport) {
             data_send(ptrespconn, responseOK, NULL);
             return;
         }
+		#endif
         os_memset(pbuf, 0, sizeof(pbuf));
         pbuf[0] = '{';
         pbuf[1] = '}';
-        if (!mesh_json_add_elem(pbuf, sizeof(pbuf), sip, ESP_MESH_JSON_IP_ELEM_LEN)) return;
-        if (!mesh_json_add_elem(pbuf, sizeof(pbuf), sport, ESP_MESH_JSON_PORT_ELEM_LEN)) return;
+        //if (!mesh_json_add_elem(pbuf, sizeof(pbuf), sip, ESP_MESH_JSON_IP_ELEM_LEN)) return;
+        //if (!mesh_json_add_elem(pbuf, sizeof(pbuf), sport, ESP_MESH_JSON_PORT_ELEM_LEN)) return;
         if (!mesh_json_add_elem(pbuf, sizeof(pbuf), dev_mac, ESP_MESH_JSON_DEV_MAC_ELEM_LEN)) return;
         uint32 dlen = os_strlen(pbuf);
         os_sprintf(pbuf+os_strlen(pbuf),"\r\n");
@@ -2000,50 +2230,42 @@ response_send(void *arg, bool responseOK )
 
 
 void ICACHE_FLASH_ATTR
-response_send_str(void *arg, bool responseOK,char* pJsonDataStr , int str_len,char* url,uint16 url_len,uint8 tag_if,uint8 header_if)
+response_send_str(void *arg, bool responseOK,char* pJsonDataStr , int str_len,char* url,uint16 url_len,uint8 tag_if,uint8 http_header_if,uint8* src,uint8* dst)
 {
-    os_printf("func response_send_str\r\n");
+    WEB_DBG("func response_send_str\r\n");
     #if ESP_MESH_SUPPORT
-        
         struct espconn *ptrespconn = arg;
         char* dev_mac = (char*)mesh_GetMdevMac();
         const size_t len = ESP_MESH_JSON_IP_ELEM_LEN + ESP_MESH_JSON_PORT_ELEM_LEN + ESP_MESH_JSON_DEV_MAC_ELEM_LEN + 10 + str_len;
-        if(len>1300) os_printf("WARNNING!!! LEN > 1300\r\n");
+        if(len>1300) WEB_DBG("WARNNING!!! LEN > 1300\r\n");
         char* pbuf = (char*)os_zalloc(len);
-
-        if (tag_if && (!sip || !sport)) {
-            os_printf("no sip or sport...\r\n");
-            data_send(ptrespconn, responseOK, NULL);
-            return;
-        }
         os_memset(pbuf, 0, sizeof(pbuf));
         if(pJsonDataStr){
             os_strncpy(pbuf,pJsonDataStr,str_len);
         }else{
-            os_sprintf(pbuf,"{}");
+            if(tag_if==1) os_sprintf(pbuf,"{}");
         }
         if(tag_if ==1){
-            if (!mesh_json_add_elem(pbuf, sizeof(pbuf), sip, ESP_MESH_JSON_IP_ELEM_LEN)) return;
-            if (!mesh_json_add_elem(pbuf, sizeof(pbuf), sport, ESP_MESH_JSON_PORT_ELEM_LEN)) return;
             if (!mesh_json_add_elem(pbuf, sizeof(pbuf), dev_mac, ESP_MESH_JSON_DEV_MAC_ELEM_LEN)) return;
         }else{
         }
-        os_printf("pbuf: %s %d  %d \r\n",pbuf,os_strlen(pbuf),len);
+        WEB_DBG("pbuf: %s %d  %d \r\n",pbuf,os_strlen(pbuf),len);
         uint32 dlen = os_strlen(pbuf);
         os_sprintf(pbuf+os_strlen(pbuf),"\r\n");
         WEB_INFO("PBUF: %p\r\n",pbuf);
-        if(header_if==1){
-            os_printf("response_send_str header_if: %d \r\n",header_if);
-            data_send_buf(ptrespconn, responseOK, pbuf,os_strlen(pbuf),url,url_len);
+		
+        if(http_header_if==1){
+            WEB_DBG("response_send_str header_if: %d \r\n",http_header_if);
+            data_send_buf(ptrespconn, responseOK, pbuf,os_strlen(pbuf),url,url_len,src,dst,false);//
         }else{
-            os_printf("response_send_str header_if: %d \r\n",header_if);
-            espconn_esp_sent(ptrespconn, pbuf, os_strlen(pbuf),0);
+            WEB_DBG("response_send_str header_if: %d \r\n",http_header_if);
+            user_JsonDataSend(ptrespconn, pbuf, os_strlen(pbuf),0,src,dst);//
         }
         os_free(pbuf);
         pbuf = NULL;
     #else
         struct espconn *ptrespconn = arg;
-        data_send_buf(ptrespconn, responseOK, pJsonDataStr,str_len,url,url_len);
+        data_send_buf(ptrespconn, responseOK, pJsonDataStr,str_len,url,url_len,NULL,NULL,false);
     #endif
 }
 
@@ -2088,9 +2310,9 @@ upgrade_check_func(void *arg)
         system_upgrade_deinit();
         system_upgrade_flag_set(UPGRADE_FLAG_IDLE);
         upgrade_lock = 0;
-        os_printf("local upgrade failed\n");
+        WEB_DBG("local upgrade failed\n");
     } else if( system_upgrade_flag_check() == UPGRADE_FLAG_FINISH ) {
-        os_printf("local upgrade success\n");
+        WEB_DBG("local upgrade success\n");
         response_send(ptrespconn, true);
         upgrade_lock = 0;
     } else {
@@ -2109,7 +2331,7 @@ void ICACHE_FLASH_ATTR
 LOCAL local_upgrade_deinit(void)
 {
     if (system_upgrade_flag_check() != UPGRADE_FLAG_START) {
-        os_printf("system upgrade deinit\n");
+        WEB_DBG("system upgrade deinit\n");
         system_upgrade_deinit();
     }
 }
@@ -2126,7 +2348,7 @@ LOCAL local_upgrade_deinit(void)
 LOCAL void ICACHE_FLASH_ATTR
 local_upgrade_download(void * arg,char *pusrdata, unsigned short length)
 {
-    os_printf("lud: ");
+    WEB_DBG("lud: ");
     char *ptr = NULL;
     char *ptmp2 = NULL;
     char lengthbuffer[32];
@@ -2153,25 +2375,24 @@ local_upgrade_download(void * arg,char *pusrdata, unsigned short length)
                     return;
                 }
             } else {
-                os_printf("sumlength failed\n");
+                WEB_DBG("sumlength failed\n");
             }
         } else {
-            os_printf("Content-Length: failed\n");
+            WEB_DBG("Content-Length: failed\n");
         }
         ptr = (char *)os_strstr(pusrdata, "\r\n\r\n");
         length -= ptr - pusrdata;
         length -= 4;
         totallength += length;
-        os_printf("upgrade file download start.\n");
+        WEB_DBG("upgrade file download start.\n");
         system_upgrade(ptr + 4, length);
-
     } else {
         totallength += length;
         system_upgrade(pusrdata, length);
     }
 
     if (totallength == sumlength) {
-        os_printf("upgrade file download finished.\n");
+        WEB_DBG("upgrade file download finished.\n");
         system_upgrade_flag_set(UPGRADE_FLAG_FINISH);
 		user_esp_set_upgrade_finish_flag();//set flag wait for reboot
         totallength = 0;
@@ -2191,60 +2412,6 @@ local_upgrade_download(void * arg,char *pusrdata, unsigned short length)
  *                length -- The length of received data
  * Returns      : none
 *******************************************************************************/
-#if ESP_MESH_SUPPORT
-
-int ICACHE_FLASH_ATTR
-webserver_RootCheckGroupMsg(uint8* pmsg)
-{
-    #define MAC_ID_STR  "%02X%02X%02X%02X%02X%02X"
-    if((NULL == (char*)os_strstr(pmsg,"\"group\"")) && (NULL == (char*)os_strstr(pmsg,"\"glen\""))){ //not mesh group message, continue...
-        return MULTICAST_CMD_NOGROUP;
-    }
-    uint8 mac_str[13];
-    os_bzero(mac_str,sizeof(mac_str));
-    
-    uint8 mac_sta[6] = {0};
-    wifi_get_macaddr(STATION_IF, mac_sta);
-
-    os_sprintf(mac_str,MAC_ID_STR,MAC2STR(mac_sta));
-    char* pMacStr = (char*)os_strstr(pmsg,"\"group\"");
-    
-    os_printf("pMacStr: %s\r\n",pMacStr);
-    os_printf("mac_str: %s\r\n",mac_str);
-    if( NULL == (char*)os_strstr(pMacStr,mac_str)){ //mesh group message, but not in the group, reply and return...
-        
-        os_printf("Not In Group, reply and stop...\r\n");        
-        if(mesh_root_if()==false){ //not mesh root , continue...
-            os_printf("NOT MESH ROOT...\r\n");
-            os_printf("MULTICAST_CMD_NODE_EXGROUP\r\n");
-            return MULTICAST_CMD_NODE_EXGROUP;
-        }else{
-            os_printf("MULTICAST_CMD_ROOT_EXGROUP\r\n");
-            return MULTICAST_CMD_ROOT_EXGROUP;
-        }
-    }else{   //mesh group message, and in the group, continue...
-        if(mesh_root_if()==false){ //not mesh root , continue...
-            os_printf("NOT MESH ROOT...\r\n");
-            os_printf("MULTICAST_CMD_NODE_INGROUP\r\n");
-            return MULTICAST_CMD_NODE_INGROUP;
-        }else{
-            os_printf("MULTICAST_CMD_ROOT_INGROUP\r\n");
-            return MULTICAST_CMD_ROOT_INGROUP;
-        }
-    }
-#undef MAC_ID_STR   
-}
-
-#endif
-
-/*
------------csc button and light communicate----------------------------------------------------------------
-*/
-#if ESP_MESH_SUPPORT
-char pair_sip[1+ESP_MESH_JSON_IP_ELEM_LEN];
-char pair_sport[1+ESP_MESH_JSON_PORT_ELEM_LEN];
-#endif
-
 void ICACHE_FLASH_ATTR
 webserver_recv(void *arg, char *pusrdata, unsigned short length)
 {
@@ -2253,43 +2420,42 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
     bool parse_flag = false;
     #if ESP_DEBUG_MODE
     static uint8 debug_upgrade_flg = 0;
+	PostCmdNeeRsp = 1;
+	
     if(debug_upgrade_flg == 0){
-        _LINE_DESP();
-        os_printf("tcp data:80: \r\n%s\r\n",pusrdata);
-        _LINE_DESP();
+        WEB_DBG("tcp data:80: \r\n%s\r\n",pusrdata);
     }
-    os_printf("tcp length: %d \r\n",length);
+    WEB_DBG("tcp length: %d \r\n",length);
     #endif
-    #if ESP_MESH_SUPPORT
-        sip = ESP_MESH_SIP_STRING;
-        sport = ESP_MESH_SPORT_STRING;
-    #endif
+
     struct espconn *ptrespconn = arg;
+    WEB_DBG("espconn in webrcv: %p \r\n",ptrespconn);
+	
+	uint8* src_addr = NULL,*dst_addr = NULL;
+    #if MESH_HEADER_MODE
+	if(espconn_mesh_get_status() == MESH_DISABLE 
+		#if ESP_DEBUG_MODE
+		&& DEBUG_FLG == true
+		#endif
+		){
+
+	}else{
+    	struct mesh_header_format* mesh_header = (struct mesh_header_format*)ptrespconn->reverse;;
+    	espconn_mesh_get_src_addr(mesh_header,&src_addr);
+    	espconn_mesh_get_dst_addr(mesh_header,&dst_addr);
+		WEB_DBG("GET SRC/DST in webserver_recv\r\n");
+		WEB_DBG("SRC: "MACSTR"\r\n",MAC2STR(src_addr));
+		WEB_DBG("DST: "MACSTR"\r\n",MAC2STR(dst_addr));
+	}
+    #endif
 
     if(upgrade_lock == 0){
-
-        os_printf("len:%u\n",length);
+        WEB_DBG("len:%u\n",length);
         if(check_data(pusrdata, length) == false){
-            os_printf("goto\n");
+            WEB_DBG("goto\n");
              goto _temp_exit;
         }
-    #if ESP_MESH_SUPPORT
-        int group_check = webserver_RootCheckGroupMsg(pusrdata);
-        os_printf("group check res is : %d \r\n",group_check);
-        if(MULTICAST_CMD_ROOT_EXGROUP==group_check ){ //check mesh root && in group
-            response_send(ptrespconn, true);
-            os_printf("mesh root replied group and quit...\r\n");
-            return;
-        }else if(MULTICAST_CMD_NODE_EXGROUP==group_check){
-            os_printf("not in group at all...\r\n");
-            return;
-        }
-    #endif
         
-    #if ESP_MESH_SUPPORT
-        sip = (char *)os_strstr(pusrdata, sip);
-        sport = (char *)os_strstr(pusrdata, sport);
-    #endif
         parse_flag = save_data(pusrdata, length);
         if (parse_flag == false) {
             WEB_INFO("-----------\r\nRESPONSE FALSE\r\n-------------\r\n");
@@ -2300,17 +2466,17 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
 		URL_Frame* pURL_Frame = &URL_PARSE;
         parse_url(precvbuffer, pURL_Frame);
 
-        os_printf("================================\r\n");
-        os_printf("pURL_Frame->pPath: %s\r\n",pURL_Frame->pPath);
-        os_printf("pURL_Frame->pSelect: %s\r\n",pURL_Frame->pSelect);
-        os_printf("pURL_Frame->pCommand: %s\r\n",pURL_Frame->pCommand);
-        os_printf("pURL_Frame->pFilename: %s\r\n",pURL_Frame->pFilename);
-        os_printf("pURL_Frame->Type: %d\r\n",pURL_Frame->Type);
-        os_printf("================================\r\n");
+        WEB_DBG("================================\r\n");
+        WEB_DBG("pURL_Frame->pPath: %s\r\n",pURL_Frame->pPath);
+        WEB_DBG("pURL_Frame->pSelect: %s\r\n",pURL_Frame->pSelect);
+        WEB_DBG("pURL_Frame->pCommand: %s\r\n",pURL_Frame->pCommand);
+        WEB_DBG("pURL_Frame->pFilename: %s\r\n",pURL_Frame->pFilename);
+        WEB_DBG("pURL_Frame->Type: %d\r\n",pURL_Frame->Type);
+        WEB_DBG("================================\r\n");
             
         switch (pURL_Frame->Type) {
             case GET:
-                os_printf("We have a GET request.\n");
+                WEB_DBG("We have a GET request.\n");
                  if (os_strcmp(pURL_Frame->pSelect, "client") == 0 &&
                         os_strcmp(pURL_Frame->pCommand, "command") == 0) {
                     if (os_strcmp(pURL_Frame->pFilename, "info") == 0) {
@@ -2372,7 +2538,6 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
                     else if (os_strcmp(pURL_Frame->pFilename, "switch") == 0) {
                         json_send(ptrespconn, SWITCH_STATUS);
                     }
-
 #endif
 
 #if LIGHT_DEVICE
@@ -2386,7 +2551,9 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
 #endif
 #if ESP_MESH_SUPPORT
                     else if (os_strcmp(pURL_Frame->pFilename, "mesh_info") == 0) {
+						mesh_clear_topology();
                         json_send(ptrespconn, MESH_INFO);
+						
                     }
 #endif
                     else if (os_strcmp(pURL_Frame->pFilename, "reboot") == 0) {
@@ -2403,8 +2570,8 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
                 } 
 #if ESP_SIMPLE_PAIR_SUPPORT
                 else if(os_strcmp(pURL_Frame->pPath,PAIR_KEEP_ALIVE)==0){
-                    os_printf("PAIR KEEP ALIVE: \r\n");
-                    sp_LightPairReplyKeepAlive();
+                    WEB_DBG("PAIR KEEP ALIVE: \r\n");
+                    sp_LightPairReplyKeepAlive(ptrespconn);
                     //return;
                 }
 #endif
@@ -2415,7 +2582,7 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
 					//json_send(ptrespconn , ESPNOW_ACTION);
 					char data_buf[500];
 					UserResponseFuncMap(data_buf,sizeof(data_buf));
-					response_send_str(ptrespconn, true,data_buf , os_strlen(data_buf),NULL,0,true,true);
+					response_send_str(ptrespconn, true,data_buf , os_strlen(data_buf),NULL,0,true,true,mesh_src_addr,src_addr);//swap dst and src
 				}
 #endif
 				else {
@@ -2426,7 +2593,7 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
                 break;
 
             case POST:
-                os_printf("We have a POST request.\n");
+                WEB_DBG("We have a POST request.\n");
                 pParseBuffer = (char *)os_strstr(precvbuffer, "\r\n\r\n");
 
                 if (pParseBuffer == NULL) {
@@ -2547,15 +2714,35 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
                             jsontree_setup(&js, (struct jsontree_value *)&PwmTree, json_putchar);
                             json_parse(&js, pParseBuffer);
 
-                            os_printf("rsp1:%u\n",PostCmdNeeRsp);
-                            if(PostCmdNeeRsp == 0)
+                            WEB_DBG("rsp1:%u\n",PostCmdNeeRsp);
+                            if(PostCmdNeeRsp == 0){
                                 PostCmdNeeRsp = 1;
-                            else
+                            }else{
                                 response_send(ptrespconn, true);
+                            }
                         } else {
                             response_send(ptrespconn, false);
                         }
                     }
+#if ESP_MESH_SUPPORT
+					else if (os_strcmp(pURL_Frame->pFilename, "meshSendStatus")==0){
+                        if (pParseBuffer != NULL) {
+                            struct jsontree_context js;
+                            jsontree_setup(&js, (struct jsontree_value *)&MeshSendQueueStatusTree, json_putchar);
+                            json_parse(&js, pParseBuffer);
+
+                            WEB_DBG("rsp1:%u\n",PostCmdNeeRsp);
+                            if(PostCmdNeeRsp == 0){
+                                PostCmdNeeRsp = 1;
+                            }else{
+                                response_send(ptrespconn, true);
+                            }
+                        } else {
+                            response_send(ptrespconn, false);
+                        }
+
+                    }
+#endif
                     else if(os_strcmp(pURL_Frame->pFilename, "switches")==0){
                         if (pParseBuffer != NULL) {
                             struct jsontree_context js;
@@ -2563,11 +2750,11 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
                             jsontree_setup(&js, (struct jsontree_value *)&BatteryTree, json_putchar);
                             json_parse(&js, pParseBuffer);
 
-                            //os_printf("rsp1:%u\n",PostCmdNeeRsp);
-                            if(PostCmdNeeRsp == 0)
+                            if(PostCmdNeeRsp == 0){
                                 PostCmdNeeRsp = 1;
-                            else
+                            }else{
                                 response_send(ptrespconn, true);
+                            }
                         } else {
                             response_send(ptrespconn, false);
                         }
@@ -2592,7 +2779,7 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
                         os_strcmp(pURL_Frame->pCommand, "command") == 0){
                     if (os_strcmp(pURL_Frame->pFilename, "start") == 0){
                         response_send(ptrespconn, true);
-                        os_printf("local upgrade start\n");
+                        WEB_DBG("local upgrade start\n");
                         upgrade_lock = 1;
 						user_esp_clr_upgrade_finish_flag();//clear flag to start ota
                         system_upgrade_init();
@@ -2603,7 +2790,7 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
                     }
                     else if (os_strcmp(pURL_Frame->pFilename, "start2") == 0){
                         response_send(ptrespconn, true);
-                        os_printf("local upgrade start\n");
+                        WEB_DBG("local upgrade start\n");
                         //upgrade_lock = 1;
 						user_esp_clr_upgrade_finish_flag();//clear flag to start ota
                         system_upgrade_init();
@@ -2617,19 +2804,19 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
                         ptr +=4;            
                         int len_tmp = (length - (ptr-pusrdata));
                         int bin_size = user_JsonGetValueInt(ptr,len_tmp,"\"size\"");
-                        os_printf("-----------\r\n");
-                        os_printf("erase size: %d\r\n",bin_size);
-                        os_printf("-----------\r\n");
+                        WEB_DBG("-----------\r\n");
+                        WEB_DBG("erase size: %d\r\n",bin_size);
+                        WEB_DBG("-----------\r\n");
                         response_send(ptrespconn, true);
                         system_upgrade_erase_flash(bin_size);
                         upgrade_lock = 1;
                     }else if (os_strcmp(pURL_Frame->pFilename, "reset") == 0) {
 						if(system_upgrade_flag_check() == UPGRADE_FLAG_FINISH){
                             response_send(ptrespconn, true);
-                            os_printf("local upgrade restart\n");
+                            WEB_DBG("local upgrade restart\n");
                             UART_WaitTxFifoEmpty(UART0,50000);
                             #if ESP_MESH_SUPPORT
-    							os_printf("deinit for OTA\r\n");
+    							WEB_DBG("deinit for OTA\r\n");
         						espconn_mesh_disable(NULL);
     							wifi_station_disconnect();
     							wifi_set_opmode(NULL_MODE);
@@ -2638,7 +2825,7 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
                             system_upgrade_reboot();
 						}else{
 							response_send(ptrespconn, false);
-							os_printf("OTA NOT FINISHED...\r\n");
+							WEB_DBG("OTA NOT FINISHED...\r\n");
 
     				    }
                     } else {
@@ -2648,23 +2835,32 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
 				//==================================================
 #if ESP_SIMPLE_PAIR_SUPPORT //LIGHT_DEVICE
 				else if(0 == os_strcmp(pURL_Frame->pPath,PAIR_START_PATH)){
-					os_printf("~~~~~~~~~~\r\n");
-					os_printf("start pairing mode \r\n");
-					os_printf("~~~~~~~~~~\r\n");
+					WEB_DBG("~~~~~~~~~~\r\n");
+					WEB_DBG("start pairing mode \r\n");
+					WEB_DBG("~~~~~~~~~~\r\n");
 					
                 #if ESP_MESH_SUPPORT
-					if(sip) {
-						os_bzero(pair_sip,sizeof(pair_sip));
-						os_memcpy(pair_sip,sip,ESP_MESH_JSON_IP_ELEM_LEN);
-						os_printf("pair_sip,%d: %s \r\n",os_strlen(pair_sip),pair_sip);
-					}
-					if(sport){
-						os_bzero(pair_sport,sizeof(pair_sport));
-						os_memcpy(pair_sport,sport,ESP_MESH_JSON_PORT_ELEM_LEN);
-						os_printf("pair_sport,%d: %s \r\n",os_strlen(pair_sport),pair_sport);
-					}
+                    #if MESH_HEADER_MODE
+        				//extern uint8 pair_src_addr[ESP_MESH_ADDR_LEN];
+        				extern uint8 pair_dst_addr[ESP_MESH_ADDR_LEN];
+                        //if(src_addr) os_memcpy(mesh_src,src_addr,ESP_MESH_ADDR_LEN);
+        				if(src_addr) os_memcpy(pair_dst_addr,src_addr,ESP_MESH_ADDR_LEN);
+					#else
+        				sip = (char *)os_strstr(pusrdata, ESP_MESH_SIP_STRING);
+        				sport = (char *)os_strstr(pusrdata, ESP_MESH_SPORT_STRING);
+    					if(sip) {
+    						os_bzero(pair_sip,sizeof(pair_sip));
+    						os_memcpy(pair_sip,sip,ESP_MESH_JSON_IP_ELEM_LEN);
+    						WEB_DBG("pair_sip,%d: %s \r\n",os_strlen(pair_sip),pair_sip);
+    					}
+    					if(sport){
+    						os_bzero(pair_sport,sizeof(pair_sport));
+    						os_memcpy(pair_sport,sport,ESP_MESH_JSON_PORT_ELEM_LEN);
+    						WEB_DBG("pair_sport,%d: %s \r\n",os_strlen(pair_sport),pair_sport);
+    					}
+					#endif
                 #endif
-					os_printf("Recv Button inform\n");
+					WEB_DBG("Recv Button inform\n");
 					struct jsontree_context js;
 					jsontree_setup(&js, (struct jsontree_value *)&button_info_tree, json_putchar);
 					json_parse(&js, pParseBuffer);
@@ -2672,21 +2868,21 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
 					char data_resp[100];
 					os_bzero(data_resp,sizeof(data_resp));
 					os_sprintf(data_resp, "{\"status\":200,\"path\":\"/device/button/configure\"}");
-					os_printf("response send str...\r\n");
-					response_send_str(ptrespconn, true, data_resp,os_strlen(data_resp),PAIR_START_PATH,os_strlen(PAIR_START_PATH),1,0);
+					WEB_DBG("response send str...\r\n");
+					response_send_str(ptrespconn, true, data_resp,os_strlen(data_resp),PAIR_START_PATH,os_strlen(PAIR_START_PATH),1,0,dst_addr,src_addr);
 					buttonPairingInfo.simple_pair_state=USER_PBULIC_BUTTON_INFO;
 					sp_LightPairState();
 					//return;
 
 				}
 				else if(0 == os_strcmp(pURL_Frame->pPath,PAIR_FOUND_REQUEST)){
-					os_printf("PAIR_FOUND_REQUEST \r\n");
+					WEB_DBG("PAIR_FOUND_REQUEST \r\n");
 					if((char*)os_strstr(pParseBuffer,"200")!=NULL){
-						os_printf("device can pair\n");
+						WEB_DBG("device can pair\n");
 						buttonPairingInfo.simple_pair_state=USER_PERMIT_SIMPLE_PAIR;
 					}
 					else if((char*)os_strstr(pParseBuffer,"403")){
-						os_printf("device cannot pair\n");
+						WEB_DBG("device cannot pair\n");
 						buttonPairingInfo.simple_pair_state=USER_REFUSE_SIMPLE_PAIR;
 					}
 					//pairStatus=SP_LIGHT_PAIR_REQ_RES;
@@ -2695,34 +2891,34 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
 				}
 				else if(0 == os_strcmp(pURL_Frame->pPath,PAIR_RESULT)){
 					if((char*)os_strstr(pParseBuffer,"200")!=NULL){
-						os_printf("device pair stop\n");
+						WEB_DBG("device pair stop\n");
 						buttonPairingInfo.simple_pair_state=USER_CONFIG_STOP_SIMPLE_PAIR;
 					}
 					else if((char*)os_strstr(pParseBuffer,"100")){
-						os_printf("device pair continue\n");
+						WEB_DBG("device pair continue\n");
 						buttonPairingInfo.simple_pair_state=USER_CONFIG_CONTIUE_SIMPLE_PAIR;
 					}
 					response_send(ptrespconn, true);
 					//return;
 				}
 				else if(0 == os_strcmp(pURL_Frame->pPath,PAIR_GET_BUTTON_LIST)){
-					os_printf("recv: %s \r\n",PAIR_GET_BUTTON_LIST);
+					WEB_DBG("recv: %s \r\n",PAIR_GET_BUTTON_LIST);
 					sp_LightReplyPairedDev();
 					//return;
 				}
 				else if(0==os_strcmp(pURL_Frame->pPath,PAIR_DELET_BUTTONS)){
-					os_printf("delect paired buttonsn\n");
+					WEB_DBG("delect paired buttonsn\n");
 					char* HttpBodyData=pParseBuffer;
 					uint8 cnt=0;
 					int8 flag;
 					cnt=sp_GetDeletButtonCnt(pParseBuffer);
-					os_printf("sp_GetDeletButtonCnt=%d\n",cnt);
+					WEB_DBG("sp_GetDeletButtonCnt=%d\n",cnt);
 					HttpBodyData+=11;//jump mac_len ,else it will be found by sp_GetDeletButtonsMAC function
 					uint8 DeletMacList[MAX_BUTTON_NUM][DEV_MAC_LEN];
 					os_bzero(DeletMacList,sizeof(DeletMacList));
 					flag=sp_GetDeletButtonsMAC(HttpBodyData,DeletMacList,cnt);
-					os_printf("sp_GetDeletButtonsMAC flag=%d\n",flag);
-					sp_DispDeletMacList("Delet List\n",DeletMacList);
+					WEB_DBG("sp_GetDeletButtonsMAC flag=%d\n",flag);
+					sp_DispDeleteMacList("Delet List\n",DeletMacList);
 					uint8 i=0;
 					for(i=0;i<cnt;i++){
 						sp_DelPairedDev(&PairedDev,DeletMacList[i]);
@@ -2730,40 +2926,44 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
 					//return;
 				}
     			else if(0==os_strcmp(pURL_Frame->pPath,USER_SET_CMD_ACTION)){
-    				   os_printf("User Register Cmd Action\n");
+    				   WEB_DBG("User Register Cmd Action\n");
     				struct jsontree_context js;
     					jsontree_setup(&js, (struct jsontree_value *)&USER_CHANGE_CMD_MAP, json_putchar);
     					json_parse(&js, pParseBuffer);
-    					 response_send(ptrespconn, true);
+                        if(PostCmdNeeRsp == 1){
+                            response_send(ptrespconn, true);
+                            //button_SendKeyFunctionSync(pParseBuffer, os_strlen(pParseBuffer));
+							user_esp_platform_button_function_status((struct espconn*)user_GetUserPConn(),NULL,MESH_BROADCAST);
+                        }else{
+                            PostCmdNeeRsp = 1;
+                        }
     					 //return;
         		 }
 				
 #endif
 				  //==================================================
 
-
-
 #if ESP_DEBUG_MODE
                 else if(os_strcmp(pURL_Frame->pSelect, "debug") == 0){
-                    os_printf("in debug\r\n");
+                    WEB_DBG("in debug\r\n");
                     if(os_strcmp(pURL_Frame->pCommand, "command") == 0){
-                        os_printf("in command\r\n");
-                        os_printf("pURL_Frame->pFilename: %s \r\n",pURL_Frame->pFilename);
+                        WEB_DBG("in command\r\n");
+                        WEB_DBG("pURL_Frame->pFilename: %s \r\n",pURL_Frame->pFilename);
                         if (os_strcmp(pURL_Frame->pFilename, "setdevkey") == 0) {
                             response_send(ptrespconn, true);
                             char* ptr = (char *)os_strstr(pusrdata, "\r\n\r\n");
                             ptr +=4;                        
-                            os_printf("devkey: %s\r\n",ptr);
+                            WEB_DBG("devkey: %s\r\n",ptr);
                             extern struct esp_platform_saved_param esp_param;
                             os_memcpy(esp_param.devkey,ptr,40);
                             system_param_save_with_protect(ESP_PARAM_START_SEC, &esp_param, sizeof(esp_param));
-                            os_printf("set devkey ....\n");
+                            WEB_DBG("set devkey ....\n");
                         }else if(os_strcmp(pURL_Frame->pFilename, "ota_time") == 0){
                             extern struct esp_platform_saved_param esp_param;
                             uint8 ota_time_resp[100];
                             os_bzero(ota_time_resp,sizeof(ota_time_resp));
                             os_sprintf(ota_time_resp,"{\"ota_stime\":%d,\"ota_ftime\":%d}",esp_param.ota_start_time,esp_param.ota_finish_time);
-                            data_send_buf(ptrespconn, true, ota_time_resp,os_strlen(ota_time_resp),NULL,0);
+                            data_send_buf(ptrespconn, true, ota_time_resp,os_strlen(ota_time_resp),NULL,0,NULL,NULL,false);
                         }
                         else if(os_strcmp(pURL_Frame->pFilename, "flash_erase") == 0){
                             char* ptr = (char *)os_strstr(pusrdata, "\r\n\r\n");
@@ -2772,17 +2972,17 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
                             //int bin_size = user_JsonGetValueInt(ptr,len_tmp,"\"size\"");
                             int sec_num = user_JsonGetValueInt(ptr,len_tmp,"\"sector_num\"");
                             int sec_start = user_JsonGetValueInt(ptr,len_tmp,"\"sector_start\"");
-                            os_printf("-----------\r\n");
-                            os_printf("sec start: %d\r\n",sec_start);
-                            os_printf("sec num: %d\r\n",sec_num);
-                            os_printf("-----------\r\n");
+                            WEB_DBG("-----------\r\n");
+                            WEB_DBG("sec start: %d\r\n",sec_start);
+                            WEB_DBG("sec num: %d\r\n",sec_num);
+                            WEB_DBG("-----------\r\n");
                             response_send(ptrespconn, true);
                             //system_upgrade_erase_flash(bin_size);
                             int i;
                             for(i=0;i<sec_num;i++){
                                 spi_flash_erase_sector(sec_start+i);
-                                os_printf("--------------\r\n");
-                                os_printf("erase sec: %d \r\n",sec_start+i);
+                                WEB_DBG("--------------\r\n");
+                                WEB_DBG("erase sec: %d \r\n",sec_start+i);
                             }
                         }
                         else if(os_strcmp(pURL_Frame->pFilename, "flash_write") == 0){
@@ -2794,8 +2994,8 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
                             ptr = (char *)os_strstr(pusrdata, "data:");
                             ptr += 5;
                             int data_len = (length - (ptr-pusrdata));
-                            os_printf("-------------\r\n");
-                            os_printf("write: %08x; len: %d\r\n",addr,data_len);
+                            WEB_DBG("-------------\r\n");
+                            WEB_DBG("write: %08x; len: %d\r\n",addr,data_len);
                             uint8* dtmp = (uint8*)os_zalloc(data_len);
                             os_memcpy(dtmp,ptr,data_len);
                             spi_flash_write(addr,(uint32*)dtmp,data_len);
@@ -2803,12 +3003,14 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
                             os_free(dtmp);
                         }
 						else if (os_strcmp(pURL_Frame->pFilename, "ota_dbg_stop") == 0){
+							#if ESP_MESH_SUPPORT
 							system_upgrade_flag_set(UPGRADE_FLAG_IDLE);
 							extern os_timer_t g_mesh_upgrade_timer;
 							os_timer_disarm(&g_mesh_upgrade_timer);
 							struct espconn* pespconn = (struct espconn*)user_GetUserPConn();
 							mesh_upgrade_check_func(pespconn);
-							os_printf("Upgrade stopped...\r\n");
+							WEB_DBG("Upgrade stopped...\r\n");
+							#endif
 							response_send(ptrespconn, true);
 						}
 						else if (os_strcmp(pURL_Frame->pFilename, "ota_dbg_reboot") == 0){
@@ -2817,12 +3019,12 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
 								light_shadeStart(HINT_GREEN,500,0,0,NULL);
 								debug_OtaRebootStart(10000);
 							}else{
-								os_printf("UPGRADE NOT FINISHED...\r\n");
+								WEB_DBG("UPGRADE NOT FINISHED...\r\n");
 							}
 						}else if(os_strcmp(pURL_Frame->pFilename, "force_reboot") == 0){
-							os_printf("force reboot,system restart ");
+							WEB_DBG("force reboot,system restart ");
 							#if ESP_MESH_SUPPORT
-								os_printf("deinit for OTA\r\n");
+								WEB_DBG("deinit for OTA\r\n");
     							espconn_mesh_disable(NULL);
 								wifi_station_disconnect();
 								wifi_set_opmode(NULL_MODE);
@@ -2832,11 +3034,11 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
 						}
                         else if(os_strcmp(pURL_Frame->pFilename, "upgrade_reboot") == 0){
                             debug_upgrade_flg = 0;
-                            os_printf("upgrade ...\r\n");
+                            WEB_DBG("upgrade ...\r\n");
                             user_esp_platform_set_reset_flg(MODE_APMODE);
 							
                             #if ESP_MESH_SUPPORT
-								os_printf("deinit for OTA\r\n");
+								WEB_DBG("deinit for OTA\r\n");
     							espconn_mesh_disable(NULL);
 								wifi_station_disconnect();
 								wifi_set_opmode(NULL_MODE);
@@ -2851,12 +3053,12 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
                             uint8* dbg_len_buf = (uint8*)os_zalloc(100);
                             
                             //os_memset(dbg_len_buf,0,sizeof(dbg_len_buf));
-                            os_sprintf(dbg_len_buf,"{\"debug_info_len\":%d}",debug_GetFlashDebugInfoLen());
+                            os_sprintf(dbg_len_buf,"{\"debug_info_len\":%d}",debug_GetFlashDebugInfoLen(&FlashDebugBufParam));
                             data_send(ptrespconn, true, dbg_len_buf);
                             os_free(dbg_len_buf);
                         }else if(os_strcmp(pURL_Frame->pFilename, "dbg_toggle_bin") == 0) {
-                            os_printf("toggle_bin...");
-                            os_printf("current bin: %d \r\n",system_upgrade_userbin_check());
+                            WEB_DBG("toggle_bin...");
+                            WEB_DBG("current bin: %d \r\n",system_upgrade_userbin_check());
                             response_send(ptrespconn, true);
                             UART_WaitTxFifoEmpty(0,50000);
                             system_upgrade_flag_set(UPGRADE_FLAG_IDLE);
@@ -2864,7 +3066,7 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
                             system_upgrade_flag_set(UPGRADE_FLAG_FINISH);
 							
                             #if ESP_MESH_SUPPORT
-								os_printf("deinit for OTA\r\n");
+								WEB_DBG("deinit for OTA\r\n");
     							espconn_mesh_disable(NULL);
 								wifi_station_disconnect();
 								wifi_set_opmode(NULL_MODE);
@@ -2873,15 +3075,50 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
                             system_upgrade_reboot();
 
                         }
-                        else if (os_strcmp(pURL_Frame->pFilename, "flash_dbg_info") == 0) {
+						else if (os_strcmp(pURL_Frame->pFilename, "flash_dbg_force") == 0) {
+                            char* ptr = (char *)os_strstr(pusrdata, "\r\n\r\n");
+                            ptr +=4;            
+                            int len_tmp = (length - (ptr-pusrdata));
+                            int offset = user_JsonGetValueInt(ptr,len_tmp,"\"offset\"");
+                            int info_size = user_JsonGetValueInt(ptr,len_tmp,"\"size\"");
+						
+    						WEB_DBG("debug info offset: %d \r\n",offset);
+    						WEB_DBG("debug info size: %d \r\n",info_size);
+
+							uint8* debug_flash_info_force = (uint8*)os_zalloc(info_size+1);
+							debug_GetFlashExceptInfoForce(debug_flash_info_force, info_size,offset);
+                            data_send(ptrespconn, true, debug_flash_info_force);
+                            os_free(debug_flash_info_force);
+                        }	
+						else if(os_strcmp(pURL_Frame->pFilename, "flash_print_reset")==0){
+							debug_FlashPrintParamReset();
+							response_send(ptrespconn, true);
+
+						}
+						else if (os_strcmp(pURL_Frame->pFilename, "flash_get") == 0) {
+                            char* ptr = (char *)os_strstr(pusrdata, "\r\n\r\n");
+                            ptr +=4;            
+                            int len_tmp = (length - (ptr-pusrdata));
+                            int offset = user_JsonGetValueInt(ptr,len_tmp,"\"offset\"");
+                            int info_size = user_JsonGetValueInt(ptr,len_tmp,"\"size\"");
+                            int addr = user_JsonGetValueInt(ptr,len_tmp,"\"addr\"");
+
+							uint8* debug_flash_get_force = (uint8*)os_zalloc(info_size+1);
+							debug_GetFlashDataForce(debug_flash_get_force, addr+offset, info_size);
+                            data_send(ptrespconn, true, debug_flash_get_force);
+                            os_free(debug_flash_get_force);
+                        }
+
+
+						else if (os_strcmp(pURL_Frame->pFilename, "flash_dbg_info") == 0) {
                             char* ptr = (char *)os_strstr(pusrdata, "\r\n\r\n");
                             ptr +=4;            
                             int len_tmp = (length - (ptr-pusrdata));
                             int offset = user_JsonGetValueInt(ptr,len_tmp,"\"offset\"");
                             int info_size = user_JsonGetValueInt(ptr,len_tmp,"\"size\"");
                             
-                            os_printf("debug info offset: %d \r\n",offset);
-                            os_printf("debug info size: %d \r\n",info_size);
+                            WEB_DBG("debug info offset: %d \r\n",offset);
+                            WEB_DBG("debug info size: %d \r\n",info_size);
                             //int info_size = 1000;//debug_GetFlashDebugInfoLen();
                             //if( offset>info_size) offset=info_size;
 
@@ -2895,7 +3132,7 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
                             }
                         }
                         else if(os_strcmp(pURL_Frame->pFilename, "flash_dbg_reset") == 0) {
-                            debug_FlashBufReset();
+                            debug_FlashBufReset(&FlashDebugBufParam,Flash_DEBUG_INFO_ADDR);
                             response_send(ptrespconn, true);
                         }
                         else if(os_strcmp(pURL_Frame->pFilename, "dbg_set_ver") == 0){
@@ -2903,11 +3140,11 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
                             ptr +=4;            
                             int len_tmp = (length - (ptr-pusrdata));
                             
-                            os_printf("json data: %s\r\n",ptr);
+                            WEB_DBG("json data: %s\r\n",ptr);
                             int ver = user_JsonGetValueInt(ptr,len_tmp,"\"debug_version\"");
-                            os_printf("ver parse: %d \r\n",ver);
+                            WEB_DBG("ver parse: %d \r\n",ver);
                             debug_SetDebugVersion(ver);
-                            os_printf("get version: %d \r\n",debug_GetDebugVersion());
+                            WEB_DBG("get version: %d \r\n",debug_GetDebugVersion());
                             response_send(ptrespconn, true);
                         }
                         else if(os_strcmp(pURL_Frame->pFilename, "get_test_ver") == 0){
@@ -2936,7 +3173,7 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
 
                             os_sprintf(data_buf,"%02x%02x%02x%02x%02x%02x",MAC2STR(mac_sta));
                             data_send(ptrespconn, true, data_buf);
-                            os_printf("mac: %s\n",data_buf);
+                            WEB_DBG("mac: %s\n",data_buf);
                             UART_WaitTxFifoEmpty(UART0,50000);
                             //system_upgrade_reboot();
                         }
@@ -2948,7 +3185,7 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
                             extern struct esp_platform_saved_param esp_param;
                             os_memcpy(data_buf,esp_param.devkey,40);
                             data_send(ptrespconn, true, data_buf);
-                            os_printf("mac: %s\n",data_buf);
+                            WEB_DBG("mac: %s\n",data_buf);
                             UART_WaitTxFifoEmpty(UART0,50000);
                             //system_upgrade_reboot();
                         }
@@ -2956,48 +3193,33 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
                             
                             user_esp_platform_set_reset_flg(MODE_APMODE);
                             response_send(ptrespconn, true);
-                            os_printf("local upgrade restart\n");
+                            WEB_DBG("local upgrade restart\n");
                             UART_WaitTxFifoEmpty(UART0,50000);
 							
                             #if ESP_MESH_SUPPORT
-								os_printf("deinit for OTA\r\n");
+								WEB_DBG("deinit for OTA\r\n");
     							espconn_mesh_disable(NULL);
 								wifi_station_disconnect();
 								wifi_set_opmode(NULL_MODE);
                             #endif
 							user_esp_clr_upgrade_finish_flag();
                             system_upgrade_reboot();
-                            os_printf("call upgrade reboot ...\r\n");
+                            WEB_DBG("call upgrade reboot ...\r\n");
                             UART_WaitTxFifoEmpty(UART0,50000);
                         }
                         else if(os_strcmp(pURL_Frame->pFilename, "set_switch_mac") == 0){
-							#if 0
-                            #if ESP_NOW_SUPPORT
-                            char* ptr = (char *)os_strstr(pusrdata, "\r\n\r\n");
-                            ptr +=4;            
-                            int len_tmp = (length - (ptr-pusrdata));
-                            uint8* data_tmp = (uint8*)os_zalloc(len_tmp);
-                            os_memcpy(data_tmp,ptr,len_tmp);
-                            spi_flash_erase_sector(LIGHT_MASTER_MAC_LIST_ADDR);
-                            spi_flash_erase_sector(LIGHT_MASTER_MAC_LIST_ADDR+1);
-                            spi_flash_erase_sector(LIGHT_MASTER_MAC_LIST_ADDR+2);
-                            spi_flash_write((LIGHT_MASTER_MAC_LIST_ADDR+1)*0x1000,(uint32*) data_tmp,len_tmp);
-                            //light_EspnowMasterMacInit();
-                            os_free(data_tmp);
-                            data_tmp = NULL;
-                            #endif
-							#endif
+							//not used 
                             response_send(ptrespconn, false);
                         }
                         else if(os_strcmp(pURL_Frame->pFilename, "get_init_data") == 0){
-                            //os_printf("t1");
+                            //WEB_DBG("t1");
                             //uint8 init_data[256] = {0};
                             uint8* init_data = (uint8*)os_zalloc(256);
-                            //os_printf("t2");
+                            //WEB_DBG("t2");
                             spi_flash_read(0xfc000,(uint32*)init_data,128);
-                            //os_printf("t3");
-                            data_send_buf(ptrespconn, true, init_data,128,NULL,0);
-                            //os_printf("t4");
+                            //WEB_DBG("t3");
+                            data_send_buf(ptrespconn, true, init_data,128,NULL,0,NULL,NULL,false);
+                            //WEB_DBG("t4");
                             os_free(init_data);
                             init_data = NULL;
                             //data_send(ptrespconn, true, init_data_resp);
@@ -3017,7 +3239,7 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
                                 spi_flash_erase_sector(0xfc);
                                 spi_flash_write(0xfc000,(uint32*)init_data,128);
                                 spi_flash_read(0xfc000,(uint32*)init_data,128);
-                                data_send_buf(ptrespconn, true, init_data,128,NULL,0);
+                                data_send_buf(ptrespconn, true, init_data,128,NULL,0,NULL,NULL,false);
                             }
                         }
                         
@@ -3030,15 +3252,15 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
                             }
                             char* ptmp = pURL_Frame->pFilename;
                             spi_flash_read(0x0,(uint32*)data_bkp,0x1000);
-                            os_printf("data bkp: %02x %02x %02x %02x %02x %02x\r\n",data_bkp[0],data_bkp[1],data_bkp[2],data_bkp[3],data_bkp[4],data_bkp[5]); 
+                            WEB_DBG("data bkp: %02x %02x %02x %02x %02x %02x\r\n",data_bkp[0],data_bkp[1],data_bkp[2],data_bkp[3],data_bkp[4],data_bkp[5]); 
                             *(data_bkp+2) = 0x0;
                             *(data_bkp+3) = 0x20;
                             spi_flash_erase_sector(0);
                             spi_flash_write(0x0,(uint32 *)data_bkp,0x1000);
                             spi_flash_read(0x0,(uint32*)data_bkp,0x1000);
-                            os_printf("data bkp check: %02x %02x %02x %02x %02x %02x\r\n",data_bkp[0],data_bkp[1],data_bkp[2],data_bkp[3],data_bkp[4],data_bkp[5]); 
+                            WEB_DBG("data bkp check: %02x %02x %02x %02x %02x %02x\r\n",data_bkp[0],data_bkp[1],data_bkp[2],data_bkp[3],data_bkp[4],data_bkp[5]); 
                             response_send(ptrespconn, true);
-                            os_printf("set devkey ....\n");
+                            WEB_DBG("set devkey ....\n");
                             UART_WaitTxFifoEmpty(UART0,50000);
                             os_free(data_bkp);
                             data_bkp=NULL;
@@ -3051,15 +3273,15 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
                             }
                             char* ptmp = pURL_Frame->pFilename;
                             spi_flash_read(0x0,(uint32*)data_bkp,0x1000);
-                            os_printf("data bkp: %02x %02x %02x %02x %02x %02x\r\n",data_bkp[0],data_bkp[1],data_bkp[2],data_bkp[3],data_bkp[4],data_bkp[5]); 
+                            WEB_DBG("data bkp: %02x %02x %02x %02x %02x %02x\r\n",data_bkp[0],data_bkp[1],data_bkp[2],data_bkp[3],data_bkp[4],data_bkp[5]); 
                             *(data_bkp+2) = 0x0;
                             *(data_bkp+3) = 0x2f;
                             spi_flash_erase_sector(0);
                             spi_flash_write(0x0,(uint32 *)data_bkp,0x1000);
                             spi_flash_read(0x0,(uint32*)data_bkp,0x1000);
-                            os_printf("data bkp check: %02x %02x %02x %02x %02x %02x\r\n",data_bkp[0],data_bkp[1],data_bkp[2],data_bkp[3],data_bkp[4],data_bkp[5]); 
+                            WEB_DBG("data bkp check: %02x %02x %02x %02x %02x %02x\r\n",data_bkp[0],data_bkp[1],data_bkp[2],data_bkp[3],data_bkp[4],data_bkp[5]); 
                             response_send(ptrespconn, true);
-                            os_printf("set devkey ....\n");
+                            WEB_DBG("set devkey ....\n");
                             UART_WaitTxFifoEmpty(UART0,50000);
                             os_free(data_bkp);
                             data_bkp=NULL;
@@ -3085,15 +3307,10 @@ webserver_recv(void *arg, char *pusrdata, unsigned short length)
     else if(upgrade_lock == 1){
         local_upgrade_download(ptrespconn,pusrdata, length);
         if(precvbuffer != NULL){
-            os_printf("free precvbuffer\r\n");
+            WEB_DBG("free precvbuffer\r\n");
             os_free(precvbuffer);
             precvbuffer = NULL;
         }
-        //if(pURL_Frame){
-        //    os_printf("free pURL_Frame\r\n");
-        //    os_free(pURL_Frame);
-        //    pURL_Frame = NULL;
-        //}
     }
 }
 
@@ -3107,8 +3324,7 @@ LOCAL ICACHE_FLASH_ATTR
 void webserver_recon(void *arg, sint8 err)
 {
     struct espconn *pesp_conn = arg;
-
-    os_printf("webserver's %d.%d.%d.%d:%d err %d reconnect\n", pesp_conn->proto.tcp->remote_ip[0],
+    WEB_DBG("webserver's %d.%d.%d.%d:%d err %d reconnect\n", pesp_conn->proto.tcp->remote_ip[0],
             pesp_conn->proto.tcp->remote_ip[1],pesp_conn->proto.tcp->remote_ip[2],
             pesp_conn->proto.tcp->remote_ip[3],pesp_conn->proto.tcp->remote_port, err);
 }
@@ -3124,7 +3340,7 @@ void webserver_discon(void *arg)
 {
     struct espconn *pesp_conn = arg;
 
-    os_printf("webserver's %d.%d.%d.%d:%d disconnect\n", pesp_conn->proto.tcp->remote_ip[0],
+    WEB_DBG("webserver's %d.%d.%d.%d:%d disconnect\n", pesp_conn->proto.tcp->remote_ip[0],
                 pesp_conn->proto.tcp->remote_ip[1],pesp_conn->proto.tcp->remote_ip[2],
                 pesp_conn->proto.tcp->remote_ip[3],pesp_conn->proto.tcp->remote_port);
 }
@@ -3157,8 +3373,7 @@ user_webserver_init(uint32 port)
     esp_conn.state = ESPCONN_NONE;
     esp_conn.proto.tcp = &esptcp;
     esp_conn.proto.tcp->local_port = port;
-
-    
+	WEB_DBG("debug: esp_conn: %p \r\n",&esp_conn);
     espconn_regist_recvcb(&esp_conn, webserver_recv);
     espconn_regist_connectcb(&esp_conn, webserver_listen);
 
@@ -3169,6 +3384,7 @@ user_webserver_init(uint32 port)
 #endif
 }
 
+//get web conn param,not used in MESH mode
 void* ICACHE_FLASH_ATTR user_GetWebPConn()
 {
     return (&esp_conn);

@@ -70,7 +70,7 @@ bool ICACHE_FLASH_ATTR RINGBUF_Check(RINGBUF *r,uint16 data_len)
 {
 	//os_printf("r->size - r->fill_cnt:data_len ; %d:%d \r\n",r->size - r->fill_cnt,data_len);
 
-	if( r->size - r->fill_cnt >=data_len) 
+	if( (r->size - r->fill_cnt) >=data_len) 
 		return true;
 	else 
 		return false;

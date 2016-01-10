@@ -1,7 +1,10 @@
 #include "user_light_mesh.h"
 #include "user_light_hint.h"
+#include "user_interface.h"
+
 #if ESP_MESH_SUPPORT
 #include "mesh.h"
+#include "user_espnow_action.h"
 LIGHT_MESH_PROC LightMeshProc;
 os_timer_t mesh_check_t;
 os_timer_t mesh_tout_t;
@@ -10,20 +13,45 @@ os_timer_t mesh_user_t;
 uint8 mesh_last_status=MESH_DISABLE;
 LOCAL bool mesh_init_flag = true;
 LOCAL char* mdev_mac = NULL;
+uint8 mesh_src_addr[ESP_MESH_ADDR_LEN];
+
+
+#if STRING_SV_IN_FLASH
+const static char BCAST_CMD[] ICACHE_RODATA_ATTR STORE_ATTR = "{\"mdev_mac\": \"000000000000\", \"period\": %d, \"rgb\": {\"red\": %d, \"green\": %d, \"blue\": %d, \"cwhite\": %d, \"wwhite\": %d},\"response\":%d}\r\n";
+const static char UCAST_CMD[] ICACHE_RODATA_ATTR STORE_ATTR = "{\"mdev_mac\": \"%02x%02x%02x%02x%02x%02x\", \"period\": %d, \"rgb\": {\"red\": %d, \"green\": %d, \"blue\": %d, \"cwhite\": %d, \"wwhite\": %d},\"response\":%d}\r\n";
+const static char LIGHT_CMD_URL[] ICACHE_RODATA_ATTR STORE_ATTR = "/config?command=light";
+const static char UPGRADE_BROADCAST_CMD[] ICACHE_RODATA_ATTR STORE_ATTR = "{\"nonce\": %lu, \"mdev_mac\": \"000000000000\", \"get\": {\"action\": \"sys_upgrade\", \"version\": \"%s\"}, \"meta\": {\"Authorization\": \"token d94c149739e985c3d40b06381444fd807fe63f29\", \"Time-Zone\": \"Asia/Kashgar\"}, \"path\": \"/v1/device/rpc/\", \"method\": \"GET\", \"deliver_to_device\": true}\r\n";
+const static char MDEV_MAC_STR[] ICACHE_RODATA_ATTR STORE_ATTR = "\"mdev_mac\":\"%02X%02X%02X%02X%02X%02X\"";
+
+#else
+#define BCAST_CMD "{\"mdev_mac\": \"000000000000\", \"period\": %d, \"rgb\": {\"red\": %d, \"green\": %d, \"blue\": %d, \"cwhite\": %d, \"wwhite\": %d},\"response\":%d}\r\n"
+#define UCAST_CMD "{\"mdev_mac\": \"%02x%02x%02x%02x%02x%02x\", \"period\": %d, \"rgb\": {\"red\": %d, \"green\": %d, \"blue\": %d, \"cwhite\": %d, \"wwhite\": %d},\"response\":%d}\r\n"
+#define LIGHT_CMD_URL "/config?command=light"
+#define UPGRADE_BROADCAST_CMD "{\"nonce\": %lu, \"mdev_mac\": \"000000000000\", \"get\": {\"action\": \"sys_upgrade\", \"version\": \"%s\"}, \"meta\": {\"Authorization\": \"token d94c149739e985c3d40b06381444fd807fe63f29\", \"Time-Zone\": \"Asia/Kashgar\"}, \"path\": \"/v1/device/rpc/\", \"method\": \"GET\", \"deliver_to_device\": true}\r\n"
+#define MDEV_MAC_STR "\"mdev_mac\":\"%02X%02X%02X%02X%02X%02X\""
+#endif
+
+
 
 void ICACHE_FLASH_ATTR
 mesh_MacIdInit()
 {
     if(mdev_mac){
-        os_printf("Mesh mdev_mac: %s \r\n",mdev_mac);
+        MESH_INFO("Mesh mdev_mac: %s \r\n",mdev_mac);
         return;
     }
     mdev_mac = (char*)os_zalloc(ESP_MESH_JSON_DEV_MAC_ELEM_LEN+1);	
-    //uint32 MAC_FLG = READ_PERI_REG(0x3ff00054);
     uint8 mac_sta[6] = {0};
     wifi_get_macaddr(STATION_IF, mac_sta);
-    os_sprintf(mdev_mac,"\"mdev_mac\":\"%02X%02X%02X%02X%02X%02X\"",MAC2STR(mac_sta));
-    os_printf("Disp mdev_mac: %s\r\n",mdev_mac);
+	#if STRING_SV_IN_FLASH
+    char mdev_mac_str[50];
+	load_string_from_flash(mdev_mac_str,sizeof(mdev_mac_str),(void*)MDEV_MAC_STR);
+    os_sprintf(mdev_mac,mdev_mac_str,MAC2STR(mac_sta));	
+	#else
+    os_sprintf(mdev_mac,MDEV_MAC_STR,MAC2STR(mac_sta));
+	#endif
+    MESH_INFO("Disp mdev_mac: %s\r\n",mdev_mac);
+    os_memcpy(mesh_src_addr,mac_sta,ESP_MESH_ADDR_LEN);
 }
 
 char* ICACHE_FLASH_ATTR
@@ -96,16 +124,23 @@ mesh_SetSoftap()
                   enable callback will only be called if the device has already joined a mesh network
 *******************************************************************************/
 void ICACHE_FLASH_ATTR
-mesh_EnableCb()
+mesh_EnableCb(sint8 status)
 {
-    mesh_StopCheckTimer();
-    _LINE_DESP();
-    MESH_INFO("TEST IN MESH ENABLE CB\r\n");
-    MESH_INFO("%s\n", __func__);
-    MESH_INFO("HEAP: %d \r\n",system_get_free_heap_size());
-    _LINE_DESP();
-    if(LightMeshProc.mesh_suc_cb){
-        LightMeshProc.mesh_suc_cb(NULL);
+    if(status == MESH_ONLINE_SUC){
+		#if ESP_DEBUG_MODE
+        if(mesh_root_if()){
+            light_set_color(0,0,0,22222,22222,1000);
+        }
+		#endif
+        MESH_INFO("debug: mesh_EnableCb: %d \r\n",status);
+    	espSendSetStatus(ESP_SERVER_ACTIVE);
+        mesh_StopCheckTimer();
+        MESH_INFO("TEST IN MESH ENABLE CB\r\n");
+        MESH_INFO("%s\n", __func__);
+        MESH_INFO("HEAP: %d \r\n",system_get_free_heap_size());
+        if(LightMeshProc.mesh_suc_cb){
+            LightMeshProc.mesh_suc_cb(NULL);
+        }
     }
 }
 
@@ -116,13 +151,11 @@ mesh_EnableCb()
                   In this case, do nothing but display some info.
 *******************************************************************************/
 void ICACHE_FLASH_ATTR
-mesh_DisableCb()
+mesh_DisableCb(sint8 status)
 {
-    _LINE_DESP();
-    MESH_INFO("TEST IN MESH DISABLE CB\r\n");
+    MESH_INFO("TEST IN MESH DISABLE CB,status: %d\r\n",status);
     MESH_INFO("%s\n", __func__);
     MESH_INFO("HEAP: %d \r\n",system_get_free_heap_size());
-    _LINE_DESP();
 }
 
 /******************************************************************************
@@ -133,11 +166,9 @@ mesh_DisableCb()
 void ICACHE_FLASH_ATTR
 mesh_SuccessCb(void* arg)
 {
-    _LINE_DESP();
     MESH_INFO("mesh log: mesh success!\r\n");
     MESH_INFO("CONNECTED, DO RUN ESP PLATFORM...\r\n");
     MESH_INFO("mesh status: %d\r\n",espconn_mesh_get_status());
-    _LINE_DESP();
     
     //show light status at the first time mesh enables
     #if ESP_DEBUG_MODE
@@ -146,10 +177,10 @@ mesh_SuccessCb(void* arg)
 		if( espconn_mesh_local_addr(&sta_ip.ip)){
 			MESH_INFO("THIS IS A MESH SUB NODE..\r\n");
 			uint32 mlevel = sta_ip.ip.addr&0xff;
-			light_ShowDevLevel(mlevel);//debug
+			light_ShowDevLevel(mlevel,5000);//debug
 		}else{
 			MESH_INFO("THIS IS A MESH ROOT..\r\n");
-			light_ShowDevLevel(1);//debug
+			light_ShowDevLevel(1,5000);//debug
 		}
 	#else
     if(mesh_init_flag){
@@ -158,10 +189,10 @@ mesh_SuccessCb(void* arg)
         if( espconn_mesh_local_addr(&sta_ip.ip)){
             MESH_INFO("THIS IS A MESH SUB NODE..\r\n");
             uint32 mlevel = sta_ip.ip.addr&0xff;
-            light_ShowDevLevel(mlevel);//debug
+            light_ShowDevLevel(mlevel,5000);//debug
         }else{
             MESH_INFO("THIS IS A MESH ROOT..\r\n");
-            light_ShowDevLevel(1);//debug
+            light_ShowDevLevel(1,5000);//debug
         }
         mesh_init_flag = false;
     }else{
@@ -195,11 +226,6 @@ mesh_FailCb(void* arg)
     MESH_INFO("CALL MESH DISABLE HERE...\r\n");
     //stop or disable mesh
     espconn_mesh_disable(mesh_DisableCb);
-    //open softap interface
-    //mesh_SetSoftap();
-    //try AP CACHE and connect
-    //WIFI_StartAPScan();
-    
     //start Esptouch
     #if ESP_TOUCH_SUPPORT
     if(false == esptouch_getAckFlag()){
@@ -207,7 +233,7 @@ mesh_FailCb(void* arg)
         return;
     }
 	#endif
-	wifi_RestartMeshScan(5000);
+	wifi_RestartMeshScan(10000);
     return;
 }
 
@@ -218,8 +244,12 @@ mesh_FailCb(void* arg)
 void ICACHE_FLASH_ATTR
 mesh_TimeoutCb(void* arg)
 {
-    MESH_INFO("MESH INIT TIMEOUT, STOP MESH\r\n");
-    mesh_FailCb(NULL);
+    if(espconn_mesh_get_status() == MESH_DISABLE || espconn_mesh_get_status() == MESH_WIFI_CONN){
+        MESH_INFO("MESH INIT TIMEOUT, STOP MESH\r\n");
+        mesh_FailCb(NULL);
+    }else{
+        MESH_INFO("mesh connecting\r\n");
+    }
     return;
 }
 
@@ -250,13 +280,12 @@ mesh_InitStatusCheck()
     
     if(mesh_status == MESH_DISABLE){
         MESH_INFO("MESH DISABLE , RUN FAIL CB ,retry:%d \r\n",LightMeshProc.init_retry);
-        if(LightMeshProc.init_retry<MESH_INIT_RETRY_LIMIT 
-			#if MESH_INIT_TIMEOUT_SET
-			&& (mesh_GetStartMs()<MESH_INIT_TIME_LIMIT)
-			#endif
-			){
+        if(LightMeshProc.init_retry<MESH_INIT_RETRY_LIMIT && (mesh_GetStartMs()<MESH_INIT_TIME_LIMIT)){
             LightMeshProc.init_retry+=1;
             espconn_mesh_enable(mesh_EnableCb, MESH_ONLINE);
+            #if ESP_DEBUG_MODE
+			light_shadeStart(HINT_YELLOW,500,6,2,NULL);
+            #endif
             MESH_INFO("MESH RETRY : %d \r\n",LightMeshProc.init_retry);
         }else{
             mesh_StopCheckTimer();
@@ -272,6 +301,7 @@ mesh_InitStatusCheck()
         MESH_INFO("MESH WIFI CONNECTED\r\n");
         mesh_StopCheckTimer();
     }
+	
     os_timer_arm(&mesh_check_t,MESH_STATUS_CHECK_MS,0);
 }
 
@@ -297,6 +327,9 @@ mesh_ReconCheck()
         user_esp_platform_connect_ap_cb();
     }else{
         espconn_mesh_enable(mesh_EnableCb, MESH_ONLINE);
+        #if ESP_DEBUG_MODE
+		light_shadeStart(HINT_YELLOW,500,6,2,NULL);
+        #endif
         os_timer_setfn(&mesh_user_t,mesh_ReconCheck,NULL);
         os_timer_arm(&mesh_user_t,20000,1);    
     }
@@ -328,6 +361,29 @@ mesh_StartReconnCheck(uint32 t)
     os_timer_arm(&mesh_user_t,t,0);
 }
 
+
+//called when a sub-node joined in.
+//Share the current status:light color/sending status/button key functions
+void ICACHE_FLASH_ATTR
+	mesh_NodeJoinCb(void* param)
+{
+    uint8* dev_mac = (uint8*)param;
+    MESH_INFO("------------------\r\n");
+	MESH_INFO("node joined: "MACSTR"\r\n",MAC2STR(dev_mac));
+	MESH_INFO("------------------\r\n\n\n\n\n");	
+	user_esp_platform_update_sending_status((struct espconn*)user_GetUserPConn(),espSendGetStatus(),MESH_UNICAST,dev_mac);
+	user_esp_platform_button_function_status((struct espconn*)user_GetUserPConn(),dev_mac,MESH_UNICAST);
+	light_SendMeshUnicastCmd(light_param_target.pwm_duty[0],light_param_target.pwm_duty[1],light_param_target.pwm_duty[2],
+		                     light_param_target.pwm_duty[3],light_param_target.pwm_duty[4],light_param_target.pwm_period,dev_mac);
+}
+
+void ICACHE_FLASH_ATTR
+	mesh_NodeConnReadyCb(void* param)
+{
+    //MESH_INFO("call mesh conn cb init...\r\n");
+	//user_esp_platform_mesh_conn_init();//debug 151201
+}
+
 /******************************************************************************
  * FunctionName : user_MeshStart
  * Description  : mesh procedure init function
@@ -346,29 +402,57 @@ user_MeshParamInit()
     LightMeshProc.mesh_suc_cb=mesh_SuccessCb;
     LightMeshProc.mesh_fail_cb=mesh_FailCb;
     LightMeshProc.mesh_init_tout_cb=mesh_TimeoutCb;
+	LightMeshProc.mesh_node_join_cb = mesh_NodeJoinCb;
     LightMeshProc.start_time = system_get_time();
     LightMeshProc.init_retry = 0;
 	
     //set max hops of mesh
     espconn_mesh_set_max_hops(MESH_MAX_HOP_NUM);
+	MESH_INFO("===============\r\n");
+	MESH_INFO("debug: REGISTER usr cb\r\n");
+	MESH_INFO("===============\r\n\r\n");
+	espconn_mesh_regist_usr_cb(mesh_NodeJoinCb);
+	espconn_mesh_regist_conn_ready_cb(mesh_NodeConnReadyCb);
+
+	#if MESH_SERVER_CONF
+    	ip_addr_t ipaddr;
+    	os_memcpy((uint8*)&(ipaddr.addr),esp_server_ip,4);
+		MESH_INFO("SERVER IP: %d.%d.%d.%d  ;; %d.%d.%d.%d\r\n",IP2STR(&ipaddr),IP2STR(esp_server_ip));
+    	if( espconn_mesh_server_init(&ipaddr, ESP_SERVER_PORT))
+    		MESH_INFO("SERVER INIT OK...\r\n");
+    	else
+    		MESH_INFO("SERVER INIT FAIL...\r\n");
+    #endif
 }
+
+
+//mesh scan start function
 void ICACHE_FLASH_ATTR
-user_MeshStart()
+user_MeshStart(void* arg)
 {
-    os_printf("test: %s\n", __func__);
+    MESH_INFO("test: %s\n", __func__);
     //user_MeshSetInfo();
     espconn_mesh_enable(mesh_EnableCb, MESH_ONLINE);
-    wifi_ClrReconnProcessAck();
+    #if ESP_DEBUG_MODE
+	MESH_INFO("MESH START SHADE!!!\r\n");
+	light_shadeStart(HINT_YELLOW,500,6,2,NULL);
+    #endif
+	
+    wifi_ClrReconnProcessFlg();
 	#if MESH_INIT_TIMEOUT_SET
-    if(LightMeshProc.mesh_init_tout_cb){
-        os_timer_disarm(&mesh_tout_t);
-        os_timer_setfn(&mesh_tout_t,LightMeshProc.mesh_init_tout_cb,NULL);
-        os_timer_arm(&mesh_tout_t,MESH_TIME_OUT_MS,0);
-    }
+	if(arg){
+		MESH_INFO("start timeout count.\r\n");
+        if(LightMeshProc.mesh_init_tout_cb){
+            os_timer_disarm(&mesh_tout_t);
+            os_timer_setfn(&mesh_tout_t,LightMeshProc.mesh_init_tout_cb,NULL);
+            os_timer_arm(&mesh_tout_t,MESH_TIME_OUT_MS,0);
+        }
+	}
 	#endif
     os_timer_disarm(&mesh_check_t);
     os_timer_setfn(&mesh_check_t,mesh_InitStatusCheck,NULL);
     os_timer_arm(&mesh_check_t,MESH_STATUS_CHECK_MS,0);
+
 }
 
 /******************************************************************************
@@ -385,19 +469,10 @@ user_MeshSetInfo()
 {
     #if MESH_SET_GROUP_ID  //set mesh group id
         espconn_mesh_group_id_init((uint8*)MESH_GROUP_ID,6);
-        os_printf("==========================\r\n");
-        os_printf("SET GROUP ID: "MACSTR"",MAC2STR(MESH_GROUP_ID));
-        os_printf("==========================\r\n");
+        MESH_INFO("==========================\r\n");
+        MESH_INFO("SET GROUP ID: "MACSTR"",MAC2STR(MESH_GROUP_ID));
+        MESH_INFO("==========================\r\n");
     #endif	
-	
-    //If the device is in MESH mode,the SSID would finally be MESH_SSID_PREFIX_X_XXXXXX
-    #if LIGHT_DEVICE
-        espconn_mesh_set_dev_type(ESP_DEV_LIGHT);
-    #elif PLUG_DEVICE
-        espconn_mesh_set_dev_type(ESP_DEV_PLUG);
-    #elif SENSOR_DEVICE
-        espconn_mesh_set_dev_type(ESP_DEV_HUMITURE);
-    #endif
     
     if( espconn_mesh_set_ssid_prefix(MESH_SSID_PREFIX,os_strlen(MESH_SSID_PREFIX))){
         MESH_INFO("SSID PREFIX SET OK..\r\n");
@@ -412,16 +487,7 @@ user_MeshSetInfo()
     }
 }
 
-#if 0
-void ICACHE_FLASH_ATTR mesh_enable_task()
-{
-    espconn_mesh_enable(NULL, MESH_ONLINE);
-}
-#endif
-
-#define BCAST_CMD "{\"mdev_mac\": \"000000000000\", \"period\": %d, \"rgb\": {\"red\": %d, \"green\": %d, \"blue\": %d, \"cwhite\": %d, \"wwhite\": %d},\"response\":%d}\r\n"
-#define BCAST_URL "/config?command=light"
-#define UPGRADE_BROADCAST_CMD "{\"nonce\": %lu, \"mdev_mac\": \"000000000000\", \"get\": {\"action\": \"sys_upgrade\", \"version\": \"%s\"}, \"meta\": {\"Authorization\": \"token d94c149739e985c3d40b06381444fd807fe63f29\", \"Time-Zone\": \"Asia/Kashgar\"}, \"path\": \"/v1/device/rpc/\", \"method\": \"GET\", \"deliver_to_device\": true}\r\n"
+//send user sending status 
 void ICACHE_FLASH_ATTR
 	light_SendMeshBroadcastUpgrade(uint32 nonce,char* version,int pkt_len)
 {
@@ -429,30 +495,88 @@ void ICACHE_FLASH_ATTR
 
 	uint8* pkt_upgrade = (uint8*)os_zalloc(pkt_len);
 	if(pkt_upgrade == NULL) return;
-	
+
+	#if STRING_SV_IN_FLASH
+    char upgrade_broadcast_cmd[300];
+	load_string_from_flash(upgrade_broadcast_cmd,sizeof(upgrade_broadcast_cmd),(void*)UPGRADE_BROADCAST_CMD);
+	os_sprintf(pkt_upgrade,upgrade_broadcast_cmd,nonce,version);	
+	#else
 	os_sprintf(pkt_upgrade,UPGRADE_BROADCAST_CMD,nonce,version);
-	//data_send_buf(pconn, true, pkt_upgrade,os_strlen(pkt_upgrade),NULL,0);
-	espconn_esp_sent(pconn, pkt_upgrade, os_strlen(pkt_upgrade),0);
+	#endif
+	
+    #if MESH_HEADER_MODE
+		uint8 dst[6],src[6];
+		os_memset(dst,0,6);
+		wifi_get_macaddr(STATION_IF,src);		
+    #endif
+
+	user_JsonDataSend(pconn, pkt_upgrade, os_strlen(pkt_upgrade),0,src,dst);
 	os_free(pkt_upgrade);
 	pkt_upgrade = NULL;
 }
 
 
-
+//send broadcast command in mesh
 void ICACHE_FLASH_ATTR
 	light_SendMeshBroadcastCmd(uint32 r,uint32 g,uint32 b,uint32 cw,uint32 ww,uint32 period)
 {
     struct espconn* pconn = (struct espconn*)user_GetUserPConn();
 	char* bcast_data = (char*)os_zalloc(300);
 	if(bcast_data==NULL) return;
-	
+    #if STRING_SV_IN_FLASH
+    char pbuf_tmp[300];
+	load_string_from_flash(pbuf_tmp,sizeof(pbuf_tmp),(void*)BCAST_CMD);
+	os_sprintf(bcast_data,pbuf_tmp,period,r,g,b,cw,ww,0);	
+	#else
 	os_sprintf(bcast_data,BCAST_CMD,period,r,g,b,cw,ww,0);
-	data_send_buf(pconn, true, bcast_data,os_strlen(bcast_data),BCAST_URL,os_strlen(BCAST_URL));
+	#endif
+	
+    #if MESH_HEADER_MODE
+		uint8 dst[6],src[6];
+		os_memset(dst,0,6);
+		wifi_get_macaddr(STATION_IF,src);		
+    #endif
+
+	#if STRING_SV_IN_FLASH
+    char light_cmd_url[100];
+	load_string_from_flash(light_cmd_url,sizeof(light_cmd_url),(void*)LIGHT_CMD_URL);
+	data_send_buf(pconn, true, bcast_data,os_strlen(bcast_data),light_cmd_url,os_strlen(light_cmd_url),src,dst,false);	
+    #else	
+	data_send_buf(pconn, true, bcast_data,os_strlen(bcast_data),LIGHT_CMD_URL,os_strlen(LIGHT_CMD_URL),src,dst,false);
+    #endif
 	os_free(bcast_data);
 	bcast_data = NULL;
 }
 
+//send unicast light command to sub-node dev
+void ICACHE_FLASH_ATTR
+	light_SendMeshUnicastCmd(uint32 r,uint32 g,uint32 b,uint32 cw,uint32 ww,uint32 period,char* dst_mac)
+{
+    struct espconn* pconn = (struct espconn*)user_GetUserPConn();
+	char* ucast_data = (char*)os_zalloc(300);
+	if(ucast_data==NULL) return;
+	#if STRING_SV_IN_FLASH
+	char pbuf_tmp[300];
+	load_string_from_flash(pbuf_tmp,sizeof(pbuf_tmp),(void*)UCAST_CMD);
+	os_sprintf(ucast_data,pbuf_tmp,MAC2STR(dst_mac),period,r,g,b,cw,ww,0);	
+	#else
+	os_sprintf(ucast_data,UCAST_CMD,MAC2STR(dst_mac),period,r,g,b,cw,ww,0);
+	#endif
+	
+    #if MESH_HEADER_MODE
+		uint8 src[6];
+		wifi_get_macaddr(STATION_IF,src);		
+    #endif
 
-
+	#if STRING_SV_IN_FLASH
+    char light_cmd_url[100];
+	load_string_from_flash(light_cmd_url,sizeof(light_cmd_url),(void*)LIGHT_CMD_URL);
+	data_send_buf(pconn, true, ucast_data,os_strlen(ucast_data),light_cmd_url,os_strlen(light_cmd_url),src,dst_mac,true);    
+	#else
+	data_send_buf(pconn, true, ucast_data,os_strlen(ucast_data),LIGHT_CMD_URL,os_strlen(LIGHT_CMD_URL),src,dst_mac,true);
+    #endif
+	os_free(ucast_data);
+	ucast_data = NULL;
+}
 #endif
 

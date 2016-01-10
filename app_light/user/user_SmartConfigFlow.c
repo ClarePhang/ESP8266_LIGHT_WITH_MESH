@@ -13,14 +13,10 @@
 #endif
 
 #if ESP_TOUCH_SUPPORT
-
 ESPTOUCH_PROC  esptouch_proc;
 os_timer_t esptouch_tout_t;
 LOCAL bool esptouch_ack_flag = false;
 uint8 esptouch_cnt = 0;
-#define SC_INFO os_printf
-
-
 
 /******************************************************************************
  * FunctionName : esptouch_getAckFlag
@@ -74,25 +70,16 @@ esptouch_ProcCb(sc_status status, void *pdata)
             break;
         case SC_STATUS_LINK:
             SC_INFO("SC_STATUS_LINK\n");
+			SC_INFO("MESH STATUS: %d\r\n",espconn_mesh_get_status());
+			SC_INFO("OPMODE : %d \r\n",wifi_get_opmode());
             struct station_config *sta_conf = pdata;
-            //os_printf();
+			wifi_station_disconnect();  
             wifi_station_set_config(sta_conf);
-            wifi_station_disconnect();
-            
-            //wifi_station_disconnect();
-            //======================
-            #if ESP_MESH_SUPPORT
-            //mesh_enable_task();
-            //user_MeshStart();
-            //user_esp_platform_connect_ap_cb();
-            #endif
-            //======================
-            wifi_station_connect();
-            
+			wifi_station_connect();
+                      
             os_timer_disarm(&esptouch_tout_t);
             os_timer_arm(&esptouch_tout_t,ESPTOUCH_CONNECT_TIMEOUT_MS,0);
             #if LIGHT_DEVICE
-            //light_blinkStart(HINT_WHITE);
             light_shadeStart(HINT_WHITE,1000,0,1,NULL);
             #endif
             break;
@@ -114,8 +101,6 @@ esptouch_ProcCb(sc_status status, void *pdata)
     
 }
 
-
-
 /******************************************************************************
  * FunctionName : esptouch_SuccessCb
  * Description  : esp-touch success callback
@@ -124,30 +109,19 @@ void ICACHE_FLASH_ATTR
     esptouch_SuccessCb(void* data)
 {
     wifi_set_opmode(STATIONAP_MODE);
-    
     os_timer_disarm(&esptouch_tout_t);//disable check timeout 
     #if LIGHT_DEVICE
     light_hint_stop(HINT_WHITE);
     #endif
     SC_INFO("ESP-TOUCH SUCCESS \r\n");
-    
     SC_INFO("ENABLE LIGHT ACTION(ESP-NOW)");
     SC_INFO("debug: channel:%d\r\n",wifi_get_channel());
-#if ESP_MESH_SUPPORT
-    if(MESH_DISABLE == espconn_mesh_get_status()){
-        //user_MeshStart();
-        //mesh_enable_task();
-    }
-    user_esp_platform_connect_ap_cb();
-    //user_MeshStart();
-#else
-    user_esp_platform_connect_ap_cb();
-#endif
-#if ESP_NOW_SUPPORT
-    light_EspnowInit();
-#endif
-    SC_INFO("CONNECTED TO AP...ENABLE MESH AND RUN PLATFORM CODE ...WAIT...\r\n");
 
+	user_esp_platform_connect_ap_cb();
+    #if ESP_NOW_SUPPORT
+    light_EspnowInit();
+    #endif
+    SC_INFO("CONNECTED TO AP...ENABLE MESH AND RUN PLATFORM CODE ...WAIT...\r\n");
 }
 
 /******************************************************************************
@@ -158,17 +132,15 @@ void ICACHE_FLASH_ATTR
     esptouch_FailCb(void* data)
 {   
     wifi_station_disconnect();
-    smartconfig_stop();
-    //wifi_set_opmode(STATIONAP_MODE);
-    
+    smartconfig_stop();    
     SC_INFO("ESP-TOUCH FAIL \r\n");
     os_timer_disarm(&esptouch_tout_t);
     #if LIGHT_DEVICE
-    light_shadeStart(HINT_RED,2000,0,1,NULL);
+    light_shadeStart(HINT_RED,800,5,1,NULL);
     #endif
     
     SC_INFO("ENABLE LIGHT ACTION(ESP-NOW)");
-    os_printf("debug: channel:%d\r\n",wifi_get_channel());
+    SC_INFO("debug: channel:%d\r\n",wifi_get_channel());
 #if ESP_NOW_SUPPORT
     light_EspnowInit();
 #endif
@@ -176,13 +148,13 @@ void ICACHE_FLASH_ATTR
 #if ESP_MESH_SUPPORT
     SC_INFO("RESTART MESH NOW...\r\n");
     #if LIGHT_DEVICE
-    light_hint_stop(HINT_RED);
+    //light_hint_stop(HINT_RED);
     #endif
-    //user_MeshStart();
-    wifi_RestartMeshScan(5000);
+    //wifi_RestartMeshScan(1000);
+    SC_INFO("re-scan mesh.\r\n");
+	user_MeshStart(1);
 #else
 	SC_INFO("ESP-TOUCH FAIL, OPEN WEBSERVER NOW");
-	mesh_SetSoftap();//check
 #endif
 }
 
@@ -212,8 +184,6 @@ void ICACHE_FLASH_ATTR
     light_EspnowDeinit();
 #endif
     WIFI_StopCheckIp();
-    //esptouch_setAckFlag(true);
-    
     SC_INFO("ESP-TOUCH FLOW INIT...\r\n");
     esptouch_proc.esptouch_fail_cb = esptouch_FailCb;
     esptouch_proc.esptouch_start_cb = esptouch_StartCb;
@@ -222,14 +192,11 @@ void ICACHE_FLASH_ATTR
     
     SC_INFO("ESP-TOUCH SET STATION MODE ...\r\n");
     wifi_set_opmode(STATION_MODE);
-
     if(esptouch_proc.esptouch_fail_cb){
         os_timer_disarm(&esptouch_tout_t);
         os_timer_setfn(&esptouch_tout_t,esptouch_proc.esptouch_fail_cb,NULL);
         os_timer_arm(&esptouch_tout_t,ESP_TOUCH_TIME_ENTER,0);
     }
-
-	
     if(esptouch_cnt>=2){
         SC_INFO("ALREADY DID ESPTOUCH %d TIMES\r\n",ESP_TOUCH_TIME_LIMIT);
 		esptouch_setAckFlag(true); //stop getting into esptouch mode 
@@ -237,10 +204,8 @@ void ICACHE_FLASH_ATTR
 		return;
     }
     esptouch_cnt += 1;
-
     SC_INFO("ESP-TOUCH START");
     smartconfig_start(esptouch_ProcCb);
-
 }
 
 

@@ -80,5 +80,7 @@ extern char pair_sport[1+ESP_MESH_JSON_PORT_ELEM_LEN];
 
 
 void user_webserver_init(uint32 port);
+void data_send_buf(void *arg, bool responseOK, char *psend,uint16 d_len,char* url,uint16 url_len,uint8* src,uint8* dst,bool p2p_msg);
+
 
 #endif

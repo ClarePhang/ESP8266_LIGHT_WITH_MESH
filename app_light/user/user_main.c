@@ -20,6 +20,9 @@
 #if ESP_PLATFORM
 #include "user_esp_platform.h"
 #endif
+#if ESP_DEBUG_MODE
+#include "user_debug.h"
+#endif
 
 #ifdef SERVER_SSL_ENABLE
 #include "ssl/cert.h"
@@ -34,17 +37,17 @@ unsigned int default_private_key_len = 0;
 #endif
 #include "user_config.h"
 
-#if ESP_WEB_SUPPORT
 
+#if 1
+
+#if ESP_WEB_SUPPORT //not supported yet
 #include "httpd.h"
 #include "httpdespfs.h"
 #include "cgiwifi.h"
 #include "espfs.h"
 #include "captdns.h"
 #include "webpages-espfs.h"
-
 #include "user_simplepair.h"
-
 #include "user_cgi.h"
 HttpdBuiltInUrl builtInUrls[]={
     {"*", cgiRedirectApClientToHostname, "light.nonet"},
@@ -62,22 +65,18 @@ HttpdBuiltInUrl builtInUrls[]={
     {"*", cgiEspFsHook, NULL}, //Catch-all cgi function for the filesystem
     {NULL, NULL, NULL} //end marker
 };
-
 #endif
 
 os_timer_t disp_t;
 void ICACHE_FLASH_ATTR
     disp_heap(int idx)
 {
-    os_printf("heap[%d]: %d \r\n",idx,system_get_free_heap_size());
-    UART_WaitTxFifoEmpty(0,50000);
+    os_printf("heap: %d \r\n",system_get_free_heap_size());
 }
 
 os_timer_t reset_flg_t;
-
 void user_rf_pre_init(void)
 {
-    //disp_heap(0);
 }
 
 void ICACHE_FLASH_ATTR
@@ -99,25 +98,26 @@ void ICACHE_FLASH_ATTR
 
 /*The main working flow of this demo:
   a. start mesh function, searching for existing mesh network
-  b. if there is no mesh network, search AP cache to connect to a recorded router.
-  c. If we still failed to establish a connection, start ESP-TOUCH wait for configure.
-  d. If ESP-TOUCH time out, re-search mesh network and AP CACHE.
+  b. if there is no available mesh network, search AP cache to connect to a recorded router.
+  c. If we still failed to establish a connection, start ESP-TOUCH waiting for configure.
+  d. If ESP-TOUCH time out, re-search mesh network.
   e. During the whole procedure,we can control and configure the light via a restful webserver.
-  f. ESP-NOW is the recently released function to control the light without any WiFi connection.You can find it in app_switch
+  f. ESP-NOW is the recently released function to control the light without Wi-Fi connection.You can find it in app_controller
 */
 void ICACHE_FLASH_ATTR
     light_main_flow()
 {
+
     UART_WaitTxFifoEmpty(0,50000);
-    uart_init(74880,74880);
+    //uart_init(74880,74880);
     user_DispAppInfo();
 
     wifi_set_opmode(STATIONAP_MODE);
 #if ESP_MESH_SUPPORT
-        wifi_station_set_auto_connect(0);
-        wifi_station_disconnect();
+    wifi_station_set_auto_connect(0);
+    wifi_station_disconnect();
 #else
-        wifi_station_set_auto_connect(1);
+    wifi_station_set_auto_connect(1);
 #endif
     os_printf("SDK version:%s\n", system_get_sdk_version());
 
@@ -125,38 +125,25 @@ void ICACHE_FLASH_ATTR
     wifi_station_ap_number_set(AP_CACHE_NUMBER);
 #endif
 
-
 #if ESP_NOW_SUPPORT
     /*We have added esp-now feature in the light project */
     /*So that the lights in a certain MAC group can be easily controlled by an ESP-NOW controller*/
-    /*The sample code is in APP_CONTROLLER/APP_SWITCH*/
-    sp_MacInit();//csc add button Mac add and delet
+    /*The sample code is in APP_CONTROLLER(must work with the reference button cercuit designed by Espressif)*/
+    sp_MacInit();//add button Mac add and delet
     light_EspnowInit();
 #endif
 
 #if 1
-
 #if ESP_PLATFORM
     /*Initialization of the peripheral drivers*/
     /*For light demo , it is user_light_init();*/
-    /* Also check whether assigned ip addr by the router.If so, connect to ESP-server  */
     user_esp_platform_init_peripheral();
-    disp_heap(5);
 
 #endif
     /*Establish a udp socket to receive local device detect info.*/
     /*Listen to the port 1025, as well as udp broadcast.
     /*If receive a string of device_find_request, it reply its IP address and MAC.*/
     user_devicefind_init();
-    disp_heap(6);
-    /*Establish a TCP server for http(with JSON) POST or GET command to communicate with the device.*/
-    /*You can find the command in "2B-SDK-Espressif IoT Demo.pdf" to see the details.*/
-    /*the JSON command for curl is like:*/
-    /*3 Channel mode: curl -X POST -H "Content-Type:application/json" -d "{\"period\":1000,\"rgb\":{\"red\":16000,\"green\":16000,\"blue\":16000}}" http://192.168.4.1/config?command=light      */
-    /*5 Channel mode: curl -X POST -H "Content-Type:application/json" -d "{\"period\":1000,\"rgb\":{\"red\":16000,\"green\":16000,\"blue\":16000,\"cwhite\":3000,\"wwhite\",3000}}" http://192.168.4.1/config?command=light      */
-    /***********NOTE!!**************/
-    /*in MESH mode, you need to add "sip","sport" and "mdev_mac" fields to send command to the desired device*/
-    /*see details in MESH documentation*/
     /*MESH INTERFACE IS AT PORT 8000*/
 #if ESP_WEB_SUPPORT
     //Initialize DNS server for captive portal
@@ -166,8 +153,7 @@ void ICACHE_FLASH_ATTR
     //Initialize webserver
     httpdInit(builtInUrls, SERVER_PORT);
     //user_webserver_init(SERVER_PORT);
-
-#else
+#elif (ESP_MESH_SUPPORT==0)
     #ifdef SERVER_SSL_ENABLE
     user_webserver_init(SERVER_SSL_PORT);
     #else
@@ -178,13 +164,14 @@ void ICACHE_FLASH_ATTR
 #endif
 
 //In debug mode, if you restart the light within 2 seconds, it will get into softap mode and wait for local upgrading firmware.
-//Restart again, it will clear the system param and set to default status.
+//Restart again within 2 seconds, it will clear the system param and set to default status.
 #if ESP_DEBUG_MODE
     extern struct esp_platform_saved_param esp_param;
     if(esp_param.reset_flg == MODE_APMODE){
         os_printf("==================\r\n");
         os_printf("RESET FLG==2,STATIONAP_MODE \r\n");
         os_printf("==================\r\n");
+		DEBUG_FLG = true;
         #if ESP_MESH_SUPPORT
         user_DeviceFindRespSet(false);
         #endif
@@ -213,7 +200,9 @@ void ICACHE_FLASH_ATTR
             //Initialize espfs containing static webpages
             espFsInit((void*)(webpages_espfs_start));
             //Initialize webserver
-            httpdInit(builtInUrls, SERVER_PORT);   
+            httpdInit(builtInUrls, SERVER_PORT);
+		#else
+		    user_webserver_init(SERVER_PORT);		
         #endif
 
         os_timer_disarm(&reset_flg_t);
@@ -225,7 +214,7 @@ void ICACHE_FLASH_ATTR
         user_light_set_duty(22222, LIGHT_WARM_WHITE);
         user_light_set_duty(22222, LIGHT_COLD_WHITE);
         os_delay_us(5000);
-        light_ShowDevLevel(5);
+        light_ShowDevLevel(2,1000);
         return;
     }
     
@@ -257,11 +246,19 @@ void ICACHE_FLASH_ATTR
       2. if failed , try connecting recorded router.
     */
     user_MeshParamInit();
-    user_MeshStart();
+    user_MeshStart(0);
 #elif ESP_TOUCH_SUPPORT
     esptouch_FlowStart();
 #endif
+
+    #if ESP_DEBUG_MODE
+    os_timer_disarm(&disp_t);
+    os_timer_setfn(&disp_t,disp_heap,NULL);
+	os_timer_arm(&disp_t,1000,1);
+	#endif
 }
+
+#endif
 
 /******************************************************************************
  * FunctionName : user_init
@@ -271,8 +268,6 @@ void ICACHE_FLASH_ATTR
 *******************************************************************************/
 void user_init(void)
 {
-       
     system_init_done_cb(light_main_flow);
-
 }
 

@@ -61,6 +61,9 @@ void system_upgrade_flag_set(uint8 flag);
 void system_timer_reinit(void);
 uint32 system_get_time(void);
 
+bool system_get_string_from_flash(void *flash_str, void *ram_str, uint16 ram_str_len);
+
+
 /* user task's prio must be 0/1/2 !!!*/
 enum {
     USER_TASK_PRIO_0 = 0,
@@ -142,6 +145,8 @@ void system_soft_wdt_restart(void);
 void system_soft_wdt_feed(void);
 
 void system_show_malloc(void);
+
+
 
 #define NULL_MODE       0x00
 #define STATION_MODE    0x01
@@ -252,6 +257,11 @@ bool wifi_station_dhcpc_set_maxtry(uint8 num);////ADD
 char* wifi_station_get_hostname(void);
 bool wifi_station_set_hostname(char *name);
 
+int wifi_station_set_cert_key(uint8 *client_cert, int client_cert_len,
+    uint8 *private_key, int private_key_len,
+    uint8 *private_key_passwd, int private_key_passwd_len);
+void wifi_station_clear_cert_key(void);
+
 struct softap_config {
     uint8 ssid[32];
     uint8 password[64];
@@ -276,6 +286,7 @@ struct station_info {
 };
 
 struct dhcps_lease {
+	bool enable;
 	struct ip_addr start_ip;
 	struct ip_addr end_ip;
 };

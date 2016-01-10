@@ -41,11 +41,14 @@ struct dhcp_client_info {
     uint8 pad[3];
 };
 
+
+#if 0
 enum {
     CMD_TYPE_MULITCAST,
     CMD_TYPE_UNICAST,
     CMD_TYPE_BROADCAST,
 };
+#endif
 
 char * user_json_find_section(const char *pbuf, u16 len, const char *section);
 int user_JsonGetValueInt(const char *pbuffer, uint16 buf_len, const uint8 *json_key);
@@ -58,5 +61,11 @@ void user_mdns_conf(void);
 void user_esp_platform_reset_default();
 void user_esp_platform_set_reset_flg(uint32 rst);
 void user_platform_send_sms();
+void user_esp_platform_mesh_conn_init();
+
+#if STRING_SV_IN_FLASH
+void ICACHE_FLASH_ATTR load_string_from_flash(char* buf,uint16 buf_len,void* flash_str);
+#endif
+
 
 #endif

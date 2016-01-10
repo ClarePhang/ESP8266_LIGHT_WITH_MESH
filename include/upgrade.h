@@ -38,8 +38,6 @@ struct upgrade_server_info {
 #define UPGRADE_FLAG_START      0x01
 #define UPGRADE_FLAG_FINISH     0x02
 
-//bool system_upgrade_start(struct upgrade_server_info *server);
-//bool system_upgrade_start_ssl(struct upgrade_server_info *server);
 void system_upgrade_init();
 void system_upgrade_deinit();
 bool system_upgrade(uint8 *data, uint16 len);

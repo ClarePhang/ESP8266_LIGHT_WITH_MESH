@@ -115,36 +115,33 @@ user_light_init(void)
     /*PIN FUNCTION INIT FOR PWM OUTPUT*/
     pwm_init(light_param.pwm_period,  pwm_duty_init ,PWM_CHANNEL,io_info);
     
-    os_printf("LIGHT PARAM: R: %d \r\n",light_param.pwm_duty[LIGHT_RED]);
-    os_printf("LIGHT PARAM: G: %d \r\n",light_param.pwm_duty[LIGHT_GREEN]);
-    os_printf("LIGHT PARAM: B: %d \r\n",light_param.pwm_duty[LIGHT_BLUE]);
+    LIGHT_INFO("LIGHT PARAM: R: %d \r\n",light_param.pwm_duty[LIGHT_RED]);
+    LIGHT_INFO("LIGHT PARAM: G: %d \r\n",light_param.pwm_duty[LIGHT_GREEN]);
+    LIGHT_INFO("LIGHT PARAM: B: %d \r\n",light_param.pwm_duty[LIGHT_BLUE]);
     if(PWM_CHANNEL>LIGHT_COLD_WHITE){
-        os_printf("LIGHT PARAM: CW: %d \r\n",light_param.pwm_duty[LIGHT_COLD_WHITE]);
-        os_printf("LIGHT PARAM: WW: %d \r\n",light_param.pwm_duty[LIGHT_WARM_WHITE]);
+        LIGHT_INFO("LIGHT PARAM: CW: %d \r\n",light_param.pwm_duty[LIGHT_COLD_WHITE]);
+        LIGHT_INFO("LIGHT PARAM: WW: %d \r\n",light_param.pwm_duty[LIGHT_WARM_WHITE]);
     }
-    os_printf("LIGHT PARAM: P: %d \r\n",light_param.pwm_period);
+    LIGHT_INFO("LIGHT PARAM: P: %d \r\n",light_param.pwm_period);
 
     uint32 light_init_target[8]={0};
     os_memcpy(light_init_target,light_param.pwm_duty,sizeof(light_param.pwm_duty));
 #if SAVE_LIGHT_PARAM
 
-    light_set_aim(  light_init_target[LIGHT_RED],
+    light_set_color(  light_init_target[LIGHT_RED],
 	                light_init_target[LIGHT_GREEN],
 	                light_init_target[LIGHT_BLUE], 
 	                light_init_target[LIGHT_COLD_WHITE],
 	                light_init_target[LIGHT_WARM_WHITE],
-	                light_param.pwm_period,0);
+	                light_param.pwm_period);
 #else
-    light_set_aim(  0,
-	                0,
-	                0, 
-	                22222,
-	                22222,
-	                light_param.pwm_period,0);
+    light_set_color(0,0,0,22222,22222,light_param.pwm_period);
+    //light_set_aim(0,0,0,22222,22222,light_param.pwm_period,0);
+
 
 #endif
     set_pwm_debug_en(0);//disable debug print in pwm driver
-    os_printf("PWM version : %08x \r\n",get_pwm_version());
+    LIGHT_INFO("PWM version : %08x \r\n",get_pwm_version());
 }
 #endif
 

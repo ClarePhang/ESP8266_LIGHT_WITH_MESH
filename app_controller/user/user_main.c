@@ -10,16 +10,9 @@
 *******************************************************************************/
 #include "ets_sys.h"
 #include "osapi.h"
-#include "user_switch.h"
-
-#if 0
-#include "httpd.h"
-#include "httpdespfs.h"
-#include "cgiwifi.h"
-#include "espfs.h"
-#include "captdns.h"
-#include "webpages-espfs.h"
-#endif
+#include "user_io.h"
+#include "user_led.h"
+#include "user_interface.h"
 
 #ifdef SERVER_SSL_ENABLE
 #include "ssl/cert.h"
@@ -34,72 +27,112 @@ unsigned int default_private_key_len = 0;
 #endif
 
 
-#include "gpio.h"
-#include "user_interface.h"
-void user_rf_pre_init(void)
-{
-	user_SwitchInit();
+#define BUTTON_CHECK_INTERVAL_MS 100
+#define LONGPRESS_TIME_MS 2000
+os_timer_t buttonTimer;
+os_timer_t chargeTimer;
+
+static int timeSinceButtonPressed=0;
+static uint16 buttonsPressedCum=0;
+
+
+void user_rf_pre_init(void) {
+	//Call io_init ASAP: it captures the buttons pressed at boot and keeps the power on.
+	io_init_early();
 }
 
-/******************************************************************************
- * FunctionName : user_init
- * Description  : entry of user application, init user function here
- * Parameters   : none
- * Returns      : none
-*******************************************************************************/
-void ICACHE_FLASH_ATTR
-    light_switch_action()
-{
-	extern void ieee80211_mesh_quick_init();
-	ieee80211_mesh_quick_init();
-
-	os_printf("ESPNOW ENABLE 6M TX RATE\r\n");
-	wifi_enable_6m_rate(true);
-    user_SwitchReact();
+//ToDo: This should also enable the buttons; people may want to use the thing while it is charging.
+void chargeTimerCb(void *arg) {
+	int input=io_get_inputs();
+	os_printf("Inputs: %x\n", input);
+	if ((input&INPUT_CHRG)==0) {
+		//USB cable was unplugged. Kill power.
+		os_timer_disarm(&chargeTimer);
+		io_powerkeep_release(); //charge power release
+	}
+	if (input&INPUT_CHRGDONE) {
+		led_pattern(LED_PATTERN_FULL);
+	} else {
+		led_pattern(LED_PATTERN_CHARGING);
+	}
 }
 
-/*
-HttpdBuiltInUrl builtInUrls[]={
-	{"*", cgiRedirectApClientToHostname, "lightswitch.local"},
-	{"/", cgiRedirect, "/wifi.tpl"},
-	{"/wifiscan.cgi", cgiWiFiScan, NULL},
-	{"/wifi.tpl", cgiEspFsTemplate, tplWlan},
-	{"/connect.cgi", cgiWiFiConnect, NULL},
-	{"/connstatus.cgi", cgiWiFiConnStatus, NULL},
-	{"/setmode.cgi", cgiWiFiSetMode, NULL},
-
-	{"*", cgiEspFsHook, NULL}, //Catch-all cgi function for the filesystem
-	{NULL, NULL, NULL} //end marker
+//ToDo: move to light_action.h ?
+enum {
+	COLOR_SET = 0,
+	COLOR_CHG ,
+	COLOR_TOGGLE,
+	COLOR_LEVEL,
+	LIGHT_RESET
 };
-*/
 
 
-uint32 user_GetBatteryVoltageMv() {
-	int r=system_get_vdd33();
-	int mv=(r*1000)/1024;
-	os_printf("BATTERY VAL: %d, raw %d\n", mv, r);
-	return mv;
+void buttonTimerCb(void *arg) {
+	int buttonsPressed=io_get_inputs()&INPUT_BUTTONMASK;
+//	os_printf("Buttons: %x\n", buttonsPressed);
+	timeSinceButtonPressed+=BUTTON_CHECK_INTERVAL_MS;
+	if (timeSinceButtonPressed>=LONGPRESS_TIME_MS) {
+		//Detected a long press. Handle accordingly.
+		os_printf("Longpress %x\n", buttonsPressedCum);
+		led_pattern(LED_PATTERN_SOFTAP);
+        //A fixed key value for pairing.
+        os_printf("pressed: %02x , pcum: %02x \r\n",buttonsPressed,buttonsPressedCum);
+		if (buttonsPressed==(INPUT_BTN1|INPUT_BTN3)) {
+			os_printf("PAIR START\r\n");
+			buttonSimplePairStart(NULL);
+		} else {
+			//switch_EspnowChnSyncStart();
+			switch_EspnowSendCmd( (buttonsPressedCum&INPUT_BUTTONMASK)|0xff00);
+		}
+		buttonsPressedCum=0;
+	} else if (buttonsPressed==0) {
+		if (!io_battery_is_lo()) {
+			led_pattern(LED_PATTERN_PACKETSENT);
+		} else {
+			led_pattern(LED_PATTERN_PACKETSENT_BATLO);
+		}
+		//Buttons have been released.
+		os_printf("Shortpress %x\n", buttonsPressedCum);
+		switch_EspnowSendCmd(buttonsPressedCum&INPUT_BUTTONMASK);
+	} else {
+		//Buttons are still pressed. Check again in a while.
+		buttonsPressedCum|=buttonsPressed;
+		os_timer_arm(&buttonTimer, BUTTON_CHECK_INTERVAL_MS, 0);
+	}
+}
+
+//ToDo: Can we put this in a header somewhere? --JD
+extern void ieee80211_mesh_quick_init();
+
+void user_system_init_done_cb() {
+	io_init();
+	led_init();
+	//See why we booted.
+	if (io_get_boot_inputs()&INPUT_CHRG) {
+		//We're charging.
+		os_printf("Charging...\n");
+		os_timer_disarm(&chargeTimer);
+		os_timer_setfn(&chargeTimer, chargeTimerCb, NULL);
+		os_timer_arm(&chargeTimer, BUTTON_CHECK_INTERVAL_MS, 1);
+		io_powerkeep_hold(); //charge power hold
+	}
+	buttonsPressedCum=io_get_boot_inputs();
+	//Probably some button has been pressed.
+	os_timer_disarm(&buttonTimer);
+	os_timer_setfn(&buttonTimer, buttonTimerCb, NULL);
+	os_timer_arm(&buttonTimer, BUTTON_CHECK_INTERVAL_MS, 0);
+
+	ieee80211_mesh_quick_init();
+	wifi_enable_6m_rate(true);
+	switch_EspnowInit();
 }
 
 void user_init(void)
 {
-#if LIGHT_DEVICE
-#elif LIGHT_SWITCH
-    uart_init(115200,115200);
-    wifi_set_opmode(STATION_MODE);
-	wifi_set_channel(1);
+	uart_init(74880,74880);
 
-	//Initialize DNS server for captive portal
-	//captdnsInit();
-	//Initialize espfs containing static webpages
-	//espFsInit((void*)(webpages_espfs_start));
-	//Initialize webserver
-	//httpdInit(builtInUrls, 80);
-
-    //SEND ACTION COMMAND ACCORDING TO GPIO STATUS
-    system_init_done_cb(light_switch_action);
-
-#endif
+	wifi_set_opmode(STATION_MODE); //todo: re-enable
+	system_init_done_cb(user_system_init_done_cb);
 }
 
 

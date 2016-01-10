@@ -35,9 +35,9 @@ Procedure for simple pairing:
 
 #include "ets_sys.h"
 #include "osapi.h"
-#include "user_switch.h"
 #include "user_interface.h"
 #include "user_buttonsimplepair.h"
+#include "user_io.h"
 #include "espnow.h"
 
 
@@ -80,6 +80,7 @@ void ICACHE_FLASH_ATTR sp_PairedParamSave(PairedButtonParam* buttonParam)
 
 void ICACHE_FLASH_ATTR sp_PairedDevParamReset(PairedButtonParam* buttonParam,uint8 max_num)
 {
+    os_printf("sp_PairedDevParamReset\r\n");
     os_memset(buttonParam,0,sizeof(PairedButtonParam));
 	buttonParam->MaxPairedDevNum = (max_num>MAX_BUTTON_NUM)?MAX_BUTTON_NUM:max_num;
     buttonParam->PairedNum=0;
@@ -105,7 +106,7 @@ sp_FindPairedDev(PairedButtonParam* buttonParam,uint8* button_mac)
 {
     uint8 i=0;
     for(i=0;i<buttonParam->MaxPairedDevNum;i++){
-        if(0 == os_memcmp(&buttonParam->PairedList[i].mac_t,button_mac,6)){
+        if(0 == os_memcmp(buttonParam->PairedList[i].mac_t,button_mac,6)){
             return i; 
         }
     } 
@@ -139,6 +140,7 @@ bool ICACHE_FLASH_ATTR sp_AddPairedDev(PairedButtonParam* buttonParam,uint8* but
     //    return  false;
     //}
     
+    os_printf("sp_AddPairedDev\r\n");
     int i=sp_FindPairedDev(buttonParam,button_mac);
 	//already exist,remove the old one, add the new one in the end
     if(i>-1 && i< buttonParam->PairedNum){
@@ -159,8 +161,11 @@ bool ICACHE_FLASH_ATTR sp_AddPairedDev(PairedButtonParam* buttonParam,uint8* but
 		idx = buttonParam->MaxPairedDevNum-1;
 		buttonParam->PairedNum = buttonParam->MaxPairedDevNum;
 	}
-    os_memcpy(&buttonParam->PairedList[idx].mac_t,button_mac,DEV_MAC_LEN);
-    os_memcpy(&buttonParam->PairedList[idx].key_t,key,ESPNOW_KEY_LEN);
+    os_memcpy((uint8*)(buttonParam->PairedList[idx].mac_t),button_mac,DEV_MAC_LEN);
+    os_memcpy((uint8*)(buttonParam->PairedList[idx].key_t),key,ESPNOW_KEY_LEN);
+	os_printf("idx: %d \r\n",idx);
+	os_printf("mac: "MACSTR"\r\n",MAC2STR(buttonParam->PairedList[idx].mac_t));
+	os_printf("key: "MACSTR":"MACSTR"\r\n",MAC2STR(buttonParam->PairedList[idx].key_t),MAC2STR(buttonParam->PairedList[idx].key_t+6));
     buttonParam->PairedList[idx].channel_t = channel;
     sp_PairedParamSave(buttonParam);
     return true;
@@ -169,6 +174,8 @@ bool ICACHE_FLASH_ATTR sp_AddPairedDev(PairedButtonParam* buttonParam,uint8* but
 
 bool ICACHE_FLASH_ATTR sp_DelPairedDev(PairedButtonParam* buttonParam,uint8* button_mac)
 {
+    os_printf("sp_DelPairedDev\r\n");
+
     if((buttonParam==NULL)||((buttonParam->PairedNum)==0)){
         return  false;
     }
@@ -254,21 +261,17 @@ static void ICACHE_FLASH_ATTR simplePairCallback(u8 *sa, uint8_t state) {
 			uint8 PairingKey[ESPNOW_KEY_LEN];
 			simple_pair_get_peer_ref(NULL, NULL, PairingKey);
 			sp_AddPairedDev(&PairedDev,sa,PairingKey,wifi_get_channel());
+			os_printf("add mac: "MACSTR"\r\n",MAC2STR(sa));
 			esp_now_add_peer(sa,ESP_NOW_ROLE_SLAVE,0,PairingKey,ESPNOW_KEY_LEN);
 			sp_DispPairedDev(&PairedDev);
-			
-
-		}
-		if(doneCb)
-		    doneCb(state==SP_ST_STA_FINISH);
+        }
+		if(doneCb) doneCb(state==SP_ST_STA_FINISH);
 		simple_pair_deinit();
-		_SWITCH_GPIO_RELEASE();
 	}else{
 		os_printf("ST: ST_SP_AP_RECV_NEG\r\n");
 		simple_pair_deinit();
-		os_printf("RELEASE GPIO...\r\n");
-		_SWITCH_GPIO_RELEASE();
 	}
+	io_powerkeep_release();
 }
 
 
@@ -277,7 +280,7 @@ void ICACHE_FLASH_ATTR ButtonPairTout()
 {
 	os_timer_disarm(&PairTout_t);
 	os_printf("Pair timeout...\r\n");
-	_SWITCH_GPIO_RELEASE();
+	io_powerkeep_release();
 }
 
 void ICACHE_FLASH_ATTR ButtonPairToutStart()
@@ -318,7 +321,7 @@ static void ICACHE_FLASH_ATTR wifiScanDoneCb(void *arg, STATUS status) {
 		
 		simple_pair_deinit();
 		os_printf("RELEASE GPIO...\r\n");
-		_SWITCH_GPIO_RELEASE();
+		io_powerkeep_release();
 	} else {
         if(wifi_set_channel(bestbss->channel)){
             os_printf("Sta set channel OK!\n");
@@ -339,6 +342,7 @@ static void ICACHE_FLASH_ATTR wifiScanDoneCb(void *arg, STATUS status) {
 
 void ICACHE_FLASH_ATTR buttonSimplePairStart(buttonSimplePairDoneCb cb) {
 	doneCb=cb;
+	io_powerkeep_hold(); //simple pair power hold
 	simple_pair_init();
 	register_simple_pair_status_cb(simplePairCallback);
 	simple_pair_sta_enter_scan_mode();

@@ -8,6 +8,7 @@
 #include "pwm.h"
 
 struct light_saved_param {
+//  uint32  debug_flg;
     uint32  pwm_period;
     uint32  pwm_duty[PWM_CHANNEL];
 };

@@ -7,6 +7,8 @@
  * functionality this ESP provides.
  *
  *******************************************************************************/
+#include "user_config.h"
+#if ESP_WEB_SUPPORT
 #include "ets_sys.h"
 #include "os_type.h"
 #include "osapi.h"
@@ -2135,4 +2137,5 @@ int ICACHE_FLASH_ATTR cgiEspApi(HttpdConnData *connData) {
 	return HTTPD_CGI_DONE;
 }
 
+#endif
 

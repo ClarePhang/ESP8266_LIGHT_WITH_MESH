@@ -69,10 +69,12 @@ LINKFLAGS_eagle.app.v6 = \
 	-lmain	\
 	-ljson	\
 	-lupgrade\
+	-lcrypto\
 	-lssl	\
 	-lsmartconfig \
 	-lespnow \
 	-lmesh \
+	-lpwm \
 	$(DEP_LIBS_eagle.app.v6)					\
 	-Wl,--end-group
 

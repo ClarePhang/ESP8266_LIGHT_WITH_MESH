@@ -13,74 +13,80 @@
 #include "user_esp_platform.h"
 #include "spi_flash.h"
 
-void ICACHE_FLASH_ATTR UserShortPressFunction1(void*arg);
-void ICACHE_FLASH_ATTR UserShortPressFunction2(void*arg);
-void ICACHE_FLASH_ATTR UserShortPressFunction3(void*arg);
-void ICACHE_FLASH_ATTR UserShortPressFunction4(void*arg);
-void ICACHE_FLASH_ATTR UserShortPressFunction5(void*arg);
-void ICACHE_FLASH_ATTR UserShortPressFunction6(void*arg);
-void ICACHE_FLASH_ATTR UserShortPressFunction7(void*arg);
-void ICACHE_FLASH_ATTR UserShortPressFunction8(void*arg);
-void ICACHE_FLASH_ATTR UserShortPressFunction9(void*arg);
-void ICACHE_FLASH_ATTR UserShortPressFunction10(void*arg);
-#if 0
-void UserLongPressFunction1(void*arg);
-void UserLongPressFunction2(void*arg);
-void UserLongPressFunction3(void*arg);
-void UserLongPressFunction4(void*arg);
-void UserLongPressFunction5(void*arg);
-void UserLongPressFunction6(void*arg);
-void UserLongPressFunction7(void*arg);
-void UserLongPressFunction8(void*arg);
-void UserLongPressFunction9(void*arg);
-void UserLongPressFunction10(void*arg);
-#endif
+void ICACHE_FLASH_ATTR UserPushFunction1(void*arg);
+void ICACHE_FLASH_ATTR UserPushFunction2(void*arg);
+void ICACHE_FLASH_ATTR UserPushFunction3(void*arg);
+void ICACHE_FLASH_ATTR UserPushFunction4(void*arg);
+void ICACHE_FLASH_ATTR UserPushFunction5(void*arg);
+void ICACHE_FLASH_ATTR UserPushFunction6(void*arg);
+void ICACHE_FLASH_ATTR UserPushFunction7(void*arg);
+void ICACHE_FLASH_ATTR UserPushFunction8(void*arg);
+void ICACHE_FLASH_ATTR UserPushFunction9(void*arg);
+void ICACHE_FLASH_ATTR UserPushFunction10(void*arg);
 
-
-//The arr is used to find which function is used to callback;
 
 //Static Table 
 FunctionTag fun_tag[MAX_COMMAND_COUNT]={
-    {"func1",UserShortPressFunction1},
-    {"func2",UserShortPressFunction2},
-    {"func3",UserShortPressFunction3},
-    {"func4",UserShortPressFunction4},
-    {"func5",UserShortPressFunction5},
-    {"func6",UserShortPressFunction6},
-    {"func7",UserShortPressFunction7},
-    {"func8",UserShortPressFunction8},
-    //{"func9",UserShortPressFunction9},
-    //{"func10",UserShortPressFunction10},
+    {"func1",UserPushFunction1},
+    {"func2",UserPushFunction2},
+    {"func3",UserPushFunction3},
+    {"func4",UserPushFunction4},
+    {"func5",UserPushFunction5},
+    {"func6",UserPushFunction6},
+    {"func7",UserPushFunction7},
+    {"func8",UserPushFunction8},
+    //{"func9",UserPushFunction9},
+    //{"func10",UserPushFunction10},
  };
 
 UserActionParam userActionParam;
-
 
 #define FUNC_PARAM_FORMAT0 "\"%d,%d,%d,%d\""
 #define FUNC_PARAM_FORMAT1 "\"%d,%d\""
 #define FUNC_PARAM_FORMAT2 "\"%d,%d\""
 #define FUNC_PARAM_FORMAT3 "\"%d,%d\""
-#define FORMAT_SEL(X)  FUNC_PARAM_FORMAT##X 
-#define FORMAT_SEL_FUNC(x) (x==0)? FUNC_PARAM_FORMAT0:\
-	                         (x==1)?FUNC_PARAM_FORMAT1:\
-	                         (x==2)?FUNC_PARAM_FORMAT2:\
-	                         (x==3)?FUNC_PARAM_FORMAT3:NULL
+//#define FORMAT_SEL(X)  FUNC_PARAM_FORMAT##X 
+//#define FORMAT_SEL_FUNC(x) (x==0)? FUNC_PARAM_FORMAT0:\
+//	                         (x==1)?FUNC_PARAM_FORMAT1:\
+//	                         (x==2)?FUNC_PARAM_FORMAT2:\
+//	                         (x==3)?FUNC_PARAM_FORMAT3:NULL
 	                                 
-                                 
-	                       
-
-
 #define FUNC_PARAM0(j,k) userActionParam.userAction[j].press_arg[k].broadcast_if,userActionParam.userAction[j].press_arg[k].R, userActionParam.userAction[j].press_arg[k].G, userActionParam.userAction[j].press_arg[k].B
 #define FUNC_PARAM1(j,k) userActionParam.userAction[j].press_arg[k].broadcast_if,userActionParam.userAction[j].press_arg[k].on_off
 #define FUNC_PARAM2(j,k) userActionParam.userAction[j].press_arg[k].broadcast_if,userActionParam.userAction[j].press_arg[k].timer_ms
 #define FUNC_PARAM3(j,k) userActionParam.userAction[j].press_arg[k].broadcast_if,userActionParam.userAction[j].press_arg[k].brightness
 
-#define PARAM_SEL(X,j,k) FUNC_PARAM_FORMAT##X(j,k) 
-PwmParam Pwm_Param={0,0,0,0,0,0};
+//#define PARAM_SEL(X,j,k) FUNC_PARAM_FORMAT##X(j,k) 
+//PwmParam Pwm_Param={0,0,0,0,0,0};
 
-/*------------------------------------------------*/
-/*---------SAVE THE PARAM----------*/
-/*------------------------------------------------*/
+
+#if STRING_SV_IN_FLASH
+const static char PRESS_FUNC_STR_0[] ICACHE_RODATA_ATTR STORE_ATTR = ",\"press%c\":\"%s\",\"arg%cpress\":"FUNC_PARAM_FORMAT0;
+const static char PRESS_FUNC_STR_1[] ICACHE_RODATA_ATTR STORE_ATTR = ",\"press%c\":\"%s\",\"arg%cpress\":"FUNC_PARAM_FORMAT1;
+const static char PRESS_FUNC_STR_2[] ICACHE_RODATA_ATTR STORE_ATTR = ",\"press%c\":\"%s\",\"arg%cpress\":"FUNC_PARAM_FORMAT2;
+const static char PRESS_FUNC_STR_3[] ICACHE_RODATA_ATTR STORE_ATTR = ",\"press%c\":\"%s\",\"arg%cpress\":"FUNC_PARAM_FORMAT3;
+
+const static char TAP_FUNC_STR_0[] ICACHE_RODATA_ATTR STORE_ATTR = ",\"tap%c\":\"%s\",\"arg%ctap\":"FUNC_PARAM_FORMAT0;
+const static char TAP_FUNC_STR_1[] ICACHE_RODATA_ATTR STORE_ATTR = ",\"tap%c\":\"%s\",\"arg%ctap\":"FUNC_PARAM_FORMAT1;
+const static char TAP_FUNC_STR_2[] ICACHE_RODATA_ATTR STORE_ATTR = ",\"tap%c\":\"%s\",\"arg%ctap\":"FUNC_PARAM_FORMAT2;
+const static char TAP_FUNC_STR_3[] ICACHE_RODATA_ATTR STORE_ATTR = ",\"tap%c\":\"%s\",\"arg%ctap\":"FUNC_PARAM_FORMAT3;
+
+//#define PRESS_FUNC_SEL(X) PRESS_FUNC_STR_##X
+//#define TAP_FUNC_SEL(X)   TAP_FUNC_STR_##X
+#else
+#define PRESS_FUNC_STR_0 ",\"press%c\":\"%s\",\"arg%cpress\":"FUNC_PARAM_FORMAT0
+#define PRESS_FUNC_STR_1 ",\"press%c\":\"%s\",\"arg%cpress\":"FUNC_PARAM_FORMAT1
+#define PRESS_FUNC_STR_2 ",\"press%c\":\"%s\",\"arg%cpress\":"FUNC_PARAM_FORMAT2
+#define PRESS_FUNC_STR_3 ",\"press%c\":\"%s\",\"arg%cpress\":"FUNC_PARAM_FORMAT3
+
+#define TAP_FUNC_STR_0 ",\"tap%c\":\"%s\",\"arg%ctap\":"FUNC_PARAM_FORMAT0
+#define TAP_FUNC_STR_1 ",\"tap%c\":\"%s\",\"arg%ctap\":"FUNC_PARAM_FORMAT1
+#define TAP_FUNC_STR_2 ",\"tap%c\":\"%s\",\"arg%ctap\":"FUNC_PARAM_FORMAT2
+#define TAP_FUNC_STR_3 ",\"tap%c\":\"%s\",\"arg%ctap\":"FUNC_PARAM_FORMAT3
+
+
+#endif
+
 void ICACHE_FLASH_ATTR
 user_EspnowActionParamLoad(UserActionParam* pParam)
 {
@@ -99,13 +105,11 @@ void ICACHE_FLASH_ATTR
 user_EespnowActionParamReset(UserActionParam* pParam)
 {
     uint16 i;
-	//pParam->magic = ACTION_PARAM_MAGIC;
 	for(i=0;i<MAX_COMMAND_COUNT;i++){
 		pParam->userAction[i].key_value = key_tag[i];
 		pParam->userAction[i].user_long_press_func_pos = -1;
 		pParam->userAction[i].user_short_press_func_pos = -1;
 	}
-	//config_ParamCsumSet(pParam,&(pParam->csum),sizeof(UserActionParam));
 	user_EspnowActionParamSave(pParam);
 }
 
@@ -115,7 +119,7 @@ bool ICACHE_FLASH_ATTR
     int i;
 	for(i=0;i<MAX_COMMAND_COUNT;i++){
         if(pParam->userAction[i].key_value != (uint16)key_tag[i]) {
-            os_printf("ESPNOW ACT PARAM ERROR\r\n");
+            ACTION_DBG("ESPNOW ACT PARAM ERROR\r\n");
 			return false;
         }
 	}
@@ -129,20 +133,12 @@ user_EspnowActionParamInit()
 	if(userActionParam.magic == ACTION_PARAM_MAGIC  
 		&& config_ParamCsumCheck(&userActionParam, sizeof(UserActionParam))
 		&& user_EspnowActionParamCheckKeyVal(&userActionParam)){
-        os_printf("ESPNOW ACTION MAP LOAD OK\r\n");
+        ACTION_DBG("ESPNOW ACTION MAP LOAD OK\r\n");
 	}else{
 		user_EespnowActionParamReset(&userActionParam);
-		os_printf("ESPNOW ACTION MAP RESET OK\r\n");
+		ACTION_DBG("ESPNOW ACTION MAP RESET OK\r\n");
 	}
 }
-
-
-
-
-
-
-
-
 
 /*----------------------------------------------------
                   short press register function
@@ -150,63 +146,70 @@ user_EspnowActionParamInit()
 LOCAL uint8 color_bit=1;
 LOCAL uint8 toggle_flg = 0;
 void ICACHE_FLASH_ATTR 
-UserShortPressFunction1(void*arg)/*  set color*/
+UserPushFunction1(void*arg)/*  set color*/
 {
-    
     EspNowCmdParam* param=(EspNowCmdParam*)arg; 
-    os_printf("UserShortPressFunction1\n");
-    os_printf("R:%d G:%d B :%d, BCST: %d\n",param->R,param->G,param->B,param->broadcast_if);	
+    ACTION_DBG("UserPushFunction1\n");
+    ACTION_DBG("R:%d G:%d B :%d, BCST: %d\n",param->R,param->G,param->B,param->broadcast_if);	
 	
 	uint32 duty_limit = DUTY_MAX_LIMIT(1000); 
-	#if ESP_NOW_SUPPORT
+	#if ESP_MESH_SUPPORT
 	if(param->broadcast_if){
+		#if ESP_DEBUG_MODE
 	    light_SendMeshBroadcastCmd(duty_limit*(param->R)/255,
 			                       duty_limit*(param->G)/255,
 			                       duty_limit*(param->B)/255,0,0,1000);
+		#else
+	    light_SendMeshBroadcastCmd(duty_limit*(param->R)/255,
+			                       duty_limit*(param->G)/255,
+			                       duty_limit*(param->B)/255,0,0,1000);
+		#endif
 	}
 	#endif
-	light_set_aim(duty_limit*(param->R)/255,duty_limit*(param->G)/255,duty_limit*(param->B)/255,0,0,1000,0);
-
+	//light_set_aim(duty_limit*(param->R)/255,duty_limit*(param->G)/255,duty_limit*(param->B)/255,0,0,1000,0);
+	light_set_color(duty_limit*(param->R)/255,duty_limit*(param->G)/255,duty_limit*(param->B)/255,0,0,1000);
 #if 0
-    os_printf("UserShortPressFunction1\n");
+    ACTION_DBG("UserPushFunction1\n");
     light_hint_abort();
     light_TimerAdd(NULL);
-    os_printf("SHUT DOWN ADD 20 SECONDS...\r\n");
+    ACTION_DBG("SHUT DOWN ADD 20 SECONDS...\r\n");
 #endif
 
 }
 void ICACHE_FLASH_ATTR 
-UserShortPressFunction2(void*arg)/*  set on off*/
+UserPushFunction2(void*arg)/*  set on off*/
 {
     EspNowCmdParam* param=(EspNowCmdParam*)arg; 
 	static uint8 toggle_flg = 0;
-    os_printf("UserShortPressFunction2\n");
-    os_printf("On_OFF %d\n",param->on_off);	
-	os_printf("BCAST: %d\r\n",param->broadcast_if);
+    ACTION_DBG("UserPushFunction2\n");
+    ACTION_DBG("On_OFF %d\n",param->on_off);	
+	ACTION_DBG("BCAST: %d\r\n",param->broadcast_if);
 	if(param->on_off == 1){
-        os_printf("turn on the light:\r\n");
+        ACTION_DBG("turn on the light:\r\n");
 		
-        #if ESP_NOW_SUPPORT
+        #if ESP_MESH_SUPPORT
 		if(param->broadcast_if){
 			light_SendMeshBroadcastCmd(0,0,0,22222,22222,1000);
 		}
 		#endif
-		light_set_aim(0,0,0,22222,22222,1000,0);
+		//light_set_aim(0,0,0,22222,22222,1000,0);
+		light_set_color(0,0,0,22222,22222,1000);
 	}else if(param->on_off == 0){
-		os_printf("turn on the light:\r\n");
+		ACTION_DBG("turn on the light:\r\n");
 		
-        #if ESP_NOW_SUPPORT
+        #if ESP_MESH_SUPPORT
 		if(param->broadcast_if){
 			light_SendMeshBroadcastCmd(0,0,0,0,0,1000);
 		}
 		#endif
-		light_set_aim(0,0,0,0,0,1000,0);
+		//light_set_aim(0,0,0,0,0,1000,0);
+		light_set_color(0,0,0,0,0,1000);
 	}else if(param->on_off == -1){
-		os_printf("toggle the light:\r\n");
+		ACTION_DBG("toggle the light:\r\n");
 		if(toggle_flg == 0){
-		    light_set_aim(0,0,0,22222,22222,1000,0);
-			
-            #if ESP_NOW_SUPPORT
+		    //light_set_aim(0,0,0,22222,22222,1000,0);
+			light_set_color(0,0,0,22222,22222,1000);
+            #if ESP_MESH_SUPPORT
 			if(param->broadcast_if){
 				light_SendMeshBroadcastCmd(0,0,0,22222,22222,1000);
 			}
@@ -214,12 +217,13 @@ UserShortPressFunction2(void*arg)/*  set on off*/
 			toggle_flg = 1;
 		}else{
 		
-            #if ESP_NOW_SUPPORT
+            #if ESP_MESH_SUPPORT
 			if(param->broadcast_if){
 				light_SendMeshBroadcastCmd(0,0,0,0,0,1000);
 			}
 			#endif
-		    light_set_aim(0,0,0,0,0,1000,0);
+		    //light_set_aim(0,0,0,0,0,1000,0);
+			light_set_color(0,0,0,0,0,1000);
 			toggle_flg = 0;
 		}
 	}
@@ -228,7 +232,7 @@ UserShortPressFunction2(void*arg)/*  set on off*/
     uint32 duty_set[PWM_CHANNEL] = {0};
     uint32 period=1000;
 
-    os_printf("UserShortPressFunction2\n");
+    ACTION_DBG("UserPushFunction2\n");
     light_hint_abort();
     light_TimerStop();
     toggle_flg= 1;
@@ -246,15 +250,15 @@ UserShortPressFunction2(void*arg)/*  set on off*/
 #endif
 }
 void ICACHE_FLASH_ATTR 
-UserShortPressFunction3(void*arg)/*  set timer*/
+UserPushFunction3(void*arg)/*  set timer*/
 {
     EspNowCmdParam* param=(EspNowCmdParam*)arg; 
-    os_printf("UserShortPressFunction3\n");
-	os_printf("Broadcast flg: %d \r\n",param->broadcast_if);
-    os_printf("Time_Ms %d\n",param->timer_ms);	
+    ACTION_DBG("UserPushFunction3\n");
+	ACTION_DBG("Broadcast flg: %d \r\n",param->broadcast_if);
+    ACTION_DBG("Time_Ms %d\n",param->timer_ms);	
 	light_TimerAdd(NULL,(param->timer_ms)*1000,false,true);
 #if 0
-    os_printf("UserShortPressFunction3\n");
+    ACTION_DBG("UserPushFunction3\n");
     light_hint_abort();
     light_TimerStop();
     color_bit = 1;
@@ -269,31 +273,48 @@ UserShortPressFunction3(void*arg)/*  set timer*/
 #endif
 }
 void ICACHE_FLASH_ATTR 
-UserShortPressFunction4(void*arg)
+UserPushFunction4(void*arg)
 {
     EspNowCmdParam* param=(EspNowCmdParam*)arg; 
-    os_printf("UserShortPressFunction4\n");
+    ACTION_DBG("UserPushFunction4\n");
     uint32 r = user_light_get_duty(LIGHT_RED);
     uint32 g = user_light_get_duty(LIGHT_GREEN);
     uint32 b = user_light_get_duty(LIGHT_BLUE);
     uint32 cw = user_light_get_duty(LIGHT_WARM_WHITE);
     uint32 ww = user_light_get_duty(LIGHT_COLD_WHITE);
-	uint32 k = 100;
-	os_printf("brightness : %d \r\n",param->brightness);
-	os_printf("broadcast : %d \r\n",param->broadcast_if);
+	int k = 100;
+	uint32 duty_target;
+	ACTION_DBG("brightness : %d \r\n",param->brightness);
+	ACTION_DBG("broadcast : %d \r\n",param->broadcast_if);
 	if(param->brightness){
-        k = 115;
+		duty_target = DUTY_MAX_LIMIT(1000) / 20; 
+		
+		if((r<duty_target) && (g<duty_target) && (b<duty_target) && (cw<duty_target) && (ww<duty_target)){
+            k=-1;
+		}else{
+            k = 200;
+		}
 	}else{
-        k = 85;
+        k = 50;
 	}
-	r = r*k/100;
-    g = g*k/100;
-	b = b*k/100;
-	cw = cw*k/100;
-	ww = ww*k/100;
-	light_set_aim(r,g,b,cw,ww,1000,0);
-	
-    #if ESP_NOW_SUPPORT
+
+    if(k==-1){
+        duty_target = DUTY_MAX_LIMIT(1000) / 10;
+		r= 0;
+		g= 0;
+		b= 0;
+		cw= duty_target;
+		ww= duty_target;
+    }else{
+		r = r*k/100;
+        g = g*k/100;
+    	b = b*k/100;
+    	cw = cw*k/100;
+    	ww = ww*k/100;
+    }
+	//light_set_aim(r,g,b,cw,ww,1000,0);
+	light_set_color(r,g,b,cw,ww,1000);
+    #if ESP_MESH_SUPPORT
 	if(param->broadcast_if){
 		light_SendMeshBroadcastCmd(r,g,b,cw,ww,1000);
 	}
@@ -330,123 +351,53 @@ UserShortPressFunction4(void*arg)
 #endif
 }
 void ICACHE_FLASH_ATTR 
-UserShortPressFunction5(void*arg)
+UserPushFunction5(void*arg)
 {
-    os_printf("UserShortPressFunction5\n");
+    ACTION_DBG("UserPushFunction5\n");
 
 }
 void ICACHE_FLASH_ATTR 
-UserShortPressFunction6(void*arg)
+UserPushFunction6(void*arg)
 {
-    os_printf("UserShortPressFunction6\n");
+    ACTION_DBG("UserPushFunction6\n");
 }
 void ICACHE_FLASH_ATTR 
-UserShortPressFunction7(void*arg)
+UserPushFunction7(void*arg)
 {
-    os_printf("UserShortPressFunction7\n");
+    ACTION_DBG("UserPushFunction7\n");
 }
 void ICACHE_FLASH_ATTR 
-UserShortPressFunction8(void*arg)
+UserPushFunction8(void*arg)
 {
-    os_printf("UserShortPressFunction8\n");
+    ACTION_DBG("UserPushFunction8\n");
 }
 void ICACHE_FLASH_ATTR 
-UserShortPressFunction9(void*arg)
+UserPushFunction9(void*arg)
 {
-    os_printf("UserShortPressFunction9\n");
+    ACTION_DBG("UserPushFunction9\n");
 }
 void ICACHE_FLASH_ATTR 
-UserShortPressFunction10(void*arg)
+UserPushFunction10(void*arg)
 {
-    os_printf("UserShortPressFunction10\n");
+    ACTION_DBG("UserPushFunction10\n");
 }
 
-/*---------------------------------------------------
-                          long press register function
---------------------------------------------------*/
-void ICACHE_FLASH_ATTR 
-UserLongPressFunction1(void*arg)
-{
-    os_printf("UserLongPressFunction1\n");
-#if 0
-     system_restore();
-    extern struct esp_platform_saved_param esp_param;
-    esp_param.reset_flg=0;
-    esp_param.activeflag = 0;
-    os_memset(esp_param.token,0,40);
-    system_param_save_with_protect(ESP_PARAM_START_SEC, &esp_param, sizeof(esp_param));
-    ESPNOW_DBG("--------------------\r\n");
-    ESPNOW_DBG("SYSTEM PARAM RESET !\r\n");
-    ESPNOW_DBG("RESET: %d ;  ACTIVE: %d \r\n",esp_param.reset_flg,esp_param.activeflag);
-    ESPNOW_DBG("--------------------\r\n\n\n");
-    UART_WaitTxFifoEmpty(0,3000);
-    system_restart();
-#endif
-}
-void ICACHE_FLASH_ATTR 
-UserLongPressFunction2(void*arg)
-{
-    os_printf("UserLongPressFunction2\n");
 
-}
-void ICACHE_FLASH_ATTR 
-UserLongPressFunction3(void*arg)
-{
-    os_printf("UserLongPressFunction3\n");
-}
-void ICACHE_FLASH_ATTR 
-UserLongPressFunction4(void*arg)
-{
-    os_printf("UserLongPressFunction4\n");
-}
-void ICACHE_FLASH_ATTR 
-UserLongPressFunction5(void*arg)
-{
-    os_printf("UserLongPressFunction5\n");
-}
-void ICACHE_FLASH_ATTR 
-UserLongPressFunction6(void*arg)
-{
-    os_printf("UserLongPressFunction6\n");
-}
-void ICACHE_FLASH_ATTR 
-UserLongPressFunction7(void*arg)
-{
-    os_printf("UserLongPressFunction7\n");
-}
-void ICACHE_FLASH_ATTR 
-UserLongPressFunction8(void*arg)
-{
-    os_printf("UserLongPressFunction8\n");
-}
-void ICACHE_FLASH_ATTR 
-UserLongPressFunction9(void*arg)
-{
-    os_printf("UserLongPressFunction9\n");
-}
-void ICACHE_FLASH_ATTR 
-UserLongPressFunction10(void*arg)
-{
-    os_printf("UserLongPressFunction10\n");
-}
 /*
 find the key of short press coresspond function
 */
-
 int8 ICACHE_FLASH_ATTR
 UserGetShortPressFuncByKey(uint8 idx)
 {
-  //find  shortr press fixed function
-	
+    //find  shortr press fixed function
     if(-1==userActionParam.userAction[idx].user_short_press_func_pos){
-          return -1;
-     }
+        return -1;
+    }
     else{
-         return (userActionParam.userAction[idx].user_short_press_func_pos);
-     }
-	
-   
+        return (userActionParam.userAction[idx].user_short_press_func_pos);
+    }
 }
+
 int8 ICACHE_FLASH_ATTR
 UserGetLongPressFuncByKey(uint8 idx)
 {
@@ -456,35 +407,56 @@ UserGetLongPressFuncByKey(uint8 idx)
     else {
         return userActionParam.userAction[idx].user_long_press_func_pos;
     }
-
 }
+
 bool ICACHE_FLASH_ATTR
 UserGetShortPressFuncString(uint8 idx,char* str)
 {
     int8 pos=0;
+	char  pbuf_tmp[100];
     if((pos=UserGetShortPressFuncByKey(idx))>-1){/*can find coreespond fun,next format string by the fun param list*/
-        switch(pos){
+		switch(pos){
             case 0:{
-                os_sprintf(str,",\"tap%c\":\"%s\",\"arg%ctap\":"FUNC_PARAM_FORMAT0,key_tag[idx],fun_tag[pos].Tag,key_tag[idx],FUNC_PARAM0(idx,SHORT_PRESS));
-                return TRUE;
+				#if STRING_SV_IN_FLASH
+                load_string_from_flash(pbuf_tmp,sizeof(pbuf_tmp),(void*)TAP_FUNC_STR_0);
+                os_sprintf(str,pbuf_tmp,key_tag[idx],fun_tag[pos].Tag,key_tag[idx],FUNC_PARAM0(idx,SHORT_PRESS));				
+				#else
+                os_sprintf(str,TAP_FUNC_STR_0,key_tag[idx],fun_tag[pos].Tag,key_tag[idx],FUNC_PARAM0(idx,SHORT_PRESS));
+                #endif
+				return TRUE;
                 break;
             }
             case 1:{
-                os_sprintf(str,",\"tap%c\":\"%s\",\"arg%ctap\":"FUNC_PARAM_FORMAT1,key_tag[idx],fun_tag[pos].Tag,key_tag[idx],FUNC_PARAM1(idx,SHORT_PRESS));
-                return TRUE;
+				#if STRING_SV_IN_FLASH
+                load_string_from_flash(pbuf_tmp,sizeof(pbuf_tmp),(void*)TAP_FUNC_STR_1);
+                os_sprintf(str,pbuf_tmp,key_tag[idx],fun_tag[pos].Tag,key_tag[idx],FUNC_PARAM1(idx,SHORT_PRESS));				
+				#else
+                os_sprintf(str,TAP_FUNC_STR_1,key_tag[idx],fun_tag[pos].Tag,key_tag[idx],FUNC_PARAM1(idx,SHORT_PRESS));
+                #endif
+				return TRUE;
                 break;
             }
             case 2:{
-                os_sprintf(str,",\"tap%c\":\"%s\",\"arg%ctap\":"FUNC_PARAM_FORMAT2,key_tag[idx],fun_tag[pos].Tag,key_tag[idx],FUNC_PARAM2(idx,SHORT_PRESS));
-                return TRUE;
+				#if STRING_SV_IN_FLASH
+                load_string_from_flash(pbuf_tmp,sizeof(pbuf_tmp),(void*)TAP_FUNC_STR_2);
+                os_sprintf(str,pbuf_tmp,key_tag[idx],fun_tag[pos].Tag,key_tag[idx],FUNC_PARAM2(idx,SHORT_PRESS));				
+				#else
+                os_sprintf(str,TAP_FUNC_STR_2,key_tag[idx],fun_tag[pos].Tag,key_tag[idx],FUNC_PARAM2(idx,SHORT_PRESS));
+                #endif
+				return TRUE;
                 break;
             }
 			case 3:
-                os_sprintf(str,",\"tap%c\":\"%s\",\"arg%ctap\":"FUNC_PARAM_FORMAT3,key_tag[idx],fun_tag[pos].Tag,key_tag[idx],FUNC_PARAM3(idx,SHORT_PRESS));
+				#if STRING_SV_IN_FLASH
+                load_string_from_flash(pbuf_tmp,sizeof(pbuf_tmp),(void*)TAP_FUNC_STR_3);
+                os_sprintf(str,pbuf_tmp,key_tag[idx],fun_tag[pos].Tag,key_tag[idx],FUNC_PARAM3(idx,SHORT_PRESS));				
+				#else
+                os_sprintf(str,TAP_FUNC_STR_3,key_tag[idx],fun_tag[pos].Tag,key_tag[idx],FUNC_PARAM3(idx,SHORT_PRESS));
+                #endif
 				return TRUE;
 				break;
             default:
-                os_printf("the key short press not add key=%c\n",key_tag[idx]);
+                ACTION_DBG("the key short press not add key=%c\n",key_tag[idx]);
                 return FALSE;
                 //break;
         }
@@ -496,29 +468,50 @@ bool ICACHE_FLASH_ATTR
 UserGetLongPressFuncString(uint8 idx,char* str)
 {
     int8 pos=0;
+	char pbuf_tmp[100];
     if((pos=UserGetLongPressFuncByKey(idx))>-1){/*can find coreespond fun,next format string by the fun param list*/
         switch(pos){
             case 0:{
-                os_sprintf(str,",\"press%c\":\"%s\",\"arg%cpress\":"FUNC_PARAM_FORMAT0,key_tag[idx],fun_tag[pos].Tag,key_tag[idx],FUNC_PARAM0(idx,LONG_PRESS));
-                return TRUE;
+				#if STRING_SV_IN_FLASH
+                load_string_from_flash(pbuf_tmp,sizeof(pbuf_tmp),(void*)PRESS_FUNC_STR_0);
+                os_sprintf(str,pbuf_tmp,key_tag[idx],fun_tag[pos].Tag,key_tag[idx],FUNC_PARAM0(idx,LONG_PRESS));				
+				#else
+                os_sprintf(str,PRESS_FUNC_STR_0,key_tag[idx],fun_tag[pos].Tag,key_tag[idx],FUNC_PARAM0(idx,LONG_PRESS));
+                #endif
+				return TRUE;
                 break;
             }
             case 1:{
-                os_sprintf(str,",\"press%c\":\"%s\",\"arg%cpress\":"FUNC_PARAM_FORMAT1,key_tag[idx],fun_tag[pos].Tag,key_tag[idx],FUNC_PARAM1(idx,LONG_PRESS));
-                return TRUE;
+				#if STRING_SV_IN_FLASH
+                load_string_from_flash(pbuf_tmp,sizeof(pbuf_tmp),(void*)PRESS_FUNC_STR_1);
+                os_sprintf(str,pbuf_tmp,key_tag[idx],fun_tag[pos].Tag,key_tag[idx],FUNC_PARAM1(idx,LONG_PRESS));				
+				#else
+                os_sprintf(str,PRESS_FUNC_STR_1,key_tag[idx],fun_tag[pos].Tag,key_tag[idx],FUNC_PARAM1(idx,LONG_PRESS));
+                #endif
+				return TRUE;
                 break;
             }
             case 2:{
-                os_sprintf(str,",\"press%c\":\"%s\",\"arg%cpress\":"FUNC_PARAM_FORMAT2,key_tag[idx],fun_tag[pos].Tag,key_tag[idx],FUNC_PARAM2(idx,LONG_PRESS));
-                return TRUE;
+				#if STRING_SV_IN_FLASH
+                load_string_from_flash(pbuf_tmp,sizeof(pbuf_tmp),(void*)PRESS_FUNC_STR_2);
+                os_sprintf(str,pbuf_tmp,key_tag[idx],fun_tag[pos].Tag,key_tag[idx],FUNC_PARAM2(idx,LONG_PRESS));				
+				#else
+                os_sprintf(str,PRESS_FUNC_STR_2,key_tag[idx],fun_tag[pos].Tag,key_tag[idx],FUNC_PARAM2(idx,LONG_PRESS));
+                #endif
+				return TRUE;
                 break;
             }
             case 3:
-                os_sprintf(str,",\"press%c\":\"%s\",\"arg%cpress\":"FUNC_PARAM_FORMAT3,key_tag[idx],fun_tag[pos].Tag,key_tag[idx],FUNC_PARAM3(idx,LONG_PRESS));
-                return TRUE;
+				#if STRING_SV_IN_FLASH
+                load_string_from_flash(pbuf_tmp,sizeof(pbuf_tmp),(void*)PRESS_FUNC_STR_3);
+                os_sprintf(str,pbuf_tmp,key_tag[idx],fun_tag[pos].Tag,key_tag[idx],FUNC_PARAM3(idx,LONG_PRESS));				
+				#else
+                os_sprintf(str,PRESS_FUNC_STR_3,key_tag[idx],fun_tag[pos].Tag,key_tag[idx],FUNC_PARAM3(idx,LONG_PRESS));
+                #endif
+				return TRUE;
                 break;
             default:
-                os_printf("the key long press not add key=%c\n",key_tag[idx]);
+                ACTION_DBG("the key long press not add key=%c\n",key_tag[idx]);
                 return FALSE;
                 break;
         }
@@ -533,10 +526,11 @@ UserResponseFuncMap(char* data_buf,uint16 buf_len)
     //char AllStr[500];
     char data[100];
     int8 i=0;
+	int ltmp = 0;
     //os_bzero(data_buf,sizeof(data_buf));
     os_bzero(data_buf,buf_len);
     
-    os_sprintf(data_buf,"%s","{\"status\":\"200\"");
+    os_sprintf(data_buf,"{\"status\":\"200\"");
 
     for(i=0;i<=MAX_COMMAND_COUNT;i++){
         os_bzero(data,sizeof(data));
@@ -548,8 +542,8 @@ UserResponseFuncMap(char* data_buf,uint16 buf_len)
             os_sprintf(data_buf+os_strlen(data_buf),"%s",data);
         }
     }
-    os_sprintf(data_buf+os_strlen(data_buf),"%s","}");
-    os_printf("data_buf :%s\n",data_buf);
+    os_sprintf(data_buf+os_strlen(data_buf),"%s","}\r\n");
+    ACTION_DBG("data_buf :%s\n",data_buf);
 }
 
 
@@ -563,7 +557,7 @@ UserGetCorrespondFunction(const char * string)
             return j;
         }
      }
-     os_printf("UserGetCorrespondFunction ERR!  THE String:%s\n",string);
+     ACTION_DBG("UserGetCorrespondFunction ERR!  THE String:%s\n",string);
      return -1;
 }
 
@@ -581,56 +575,12 @@ UserGetParamInt(const char* pParamStr, int* val, uint8 idx)
 		idx--;
 		pHead++;
 	}
-	//os_printf("debug: parse ptr: %s \r\n",pHead);
+	//ACTION_DBG("debug: parse ptr: %s \r\n",pHead);
 	*val = strtol(pHead,NULL,10);
     return true;
 }
 #endif
 
-#if 0
-bool ICACHE_FLASH_ATTR
-UserGetPwm(const char * pStr,int* bcst_en,uint16* r,uint16 *g,uint16* b)
-{
-	
-    char * Pos1=NULL;//the first ',' pos
-    char* Pos2=NULL;//the second ',' pos
-    char* Pos3=NULL;
-
-   if( NULL==(Pos1=os_strchr(pStr,','))){
-        os_printf("1the pwm param err!the string:%s\n",pStr);
-        return FALSE;
-   }
-   if(NULL==(Pos2=os_strchr(Pos1+1,','))){
-        os_printf("2the pwm param err!,the string:%s\n\n",pStr);
-        return FALSE;
-   }
-   if(NULL==(Pos3=os_strchr(Pos2+1,','))){
-        os_printf("2the pwm param err!,the string:%s\n\n",pStr);
-        return FALSE;
-   }
-   char Data [6];
-   // Get BCAST
-   os_bzero(Data,sizeof(Data));
-   memcpy(Data,pStr,(Pos1-pStr));
-   *bcst_en=strtol(Data,NULL,10);
-   //Get R
-   os_bzero(Data,sizeof(Data));
-    memcpy(Data,Pos1+1,(Pos2-(Pos1+1)));
-   *r=strtol(Data,NULL,10);
-   //Get G
-   os_bzero(Data,sizeof(Data));
-    memcpy(Data,Pos2+1,(Pos3-(Pos2+1)));
-   *g=strtol(Data,NULL,10);
-   
-    //Get B
-   os_bzero(Data,sizeof(Data));
-    os_strcpy(Data,Pos3+1);
-   *b=strtol(Data,NULL,10);
-
-    return TRUE;
-    
-}
-#endif
 
 bool ICACHE_FLASH_ATTR
 UserGetCmdParam(uint8 fun_pos,const char* pStr,EspNowCmdParam* param)
@@ -641,21 +591,21 @@ UserGetCmdParam(uint8 fun_pos,const char* pStr,EspNowCmdParam* param)
     fun3: Get time_ms
     */
     if(fun_pos>=MAX_COMMAND_COUNT){//
-        os_printf("The fun_pos err  fun_pos=%d!\n",fun_pos);
+        ACTION_DBG("The fun_pos err  fun_pos=%d!\n",fun_pos);
     	return FALSE;
     }
     if(!pStr){//the string is empty ==err
-        os_printf("UserGetCmdParam the stirng err!!!\n");
+        ACTION_DBG("UserGetCmdParam the stirng err!!!\n");
     	 return FALSE;
     }
     if(os_strcmp(pStr,"nil")==0){
-         os_printf("the fun_pos=%d is nil!!!\n",fun_pos);
+         ACTION_DBG("the fun_pos=%d is nil!!!\n",fun_pos);
          return FALSE;
     }
 
 	int bcast_if = 0;
 	int brighten_flg = 0;
-	os_printf("pStr: %s \r\n",pStr);
+	ACTION_DBG("pStr: %s \r\n",pStr);
     switch(fun_pos){
        case(0):{//the function 1 ,should give r g b param
            int r=0,g=0,b=0;
@@ -667,16 +617,16 @@ UserGetCmdParam(uint8 fun_pos,const char* pStr,EspNowCmdParam* param)
 		   param->G = g;
 		   param->B = b;
 		   param->broadcast_if = bcast_if;
-		   os_printf("r:%d;g:%d;b:%d;bcst:%d;",param->R,param->G,param->B,param->broadcast_if);
+		   ACTION_DBG("r:%d;g:%d;b:%d;bcst:%d;",param->R,param->G,param->B,param->broadcast_if);
            break;
        }
        case(1):{//the function 2 ,should give  on offf  param
            int on_off=0;			   
            if(!UserGetParamInt(pStr, &on_off, 1)) return false;
            if(!UserGetParamInt(pStr, &bcast_if, 0)) return false;
-           os_printf("parse res: on/off: %d , bcast: %d \r\n",on_off,bcast_if);
+           ACTION_DBG("parse res: on/off: %d , bcast: %d \r\n",on_off,bcast_if);
            if(on_off!=0&&on_off!=1&&on_off!=-1){
-               os_printf("ON OFF err!!! on_off=%d\n",on_off);
+               ACTION_DBG("ON OFF err!!! on_off=%d\n",on_off);
                return FALSE;
            } else{
                param->on_off=on_off;
@@ -688,7 +638,7 @@ UserGetCmdParam(uint8 fun_pos,const char* pStr,EspNowCmdParam* param)
            int time=0;
            if(!UserGetParamInt(pStr, &time, 1)) return false;
            if(!UserGetParamInt(pStr, &bcast_if, 0)) return false;
-           os_printf("parse res: time: %d , bcast: %d \r\n",time,bcast_if);
+           ACTION_DBG("parse res: time: %d , bcast: %d \r\n",time,bcast_if);
            if(time<0||time>3600) return false;
            param->timer_ms=time;
            param->broadcast_if = bcast_if;
@@ -698,13 +648,13 @@ UserGetCmdParam(uint8 fun_pos,const char* pStr,EspNowCmdParam* param)
 	   case 3: 
 	   	   if(!UserGetParamInt(pStr, &bcast_if, 0)) return false;
 		   if(!UserGetParamInt(pStr, &brighten_flg, 1)) return false;
-		   os_printf("parse res: brighten_flg: %d ; broadcast: %d \r\n",brighten_flg,bcast_if);
+		   ACTION_DBG("parse res: brighten_flg: %d ; broadcast: %d \r\n",brighten_flg,bcast_if);
 		   if(brighten_flg>1) return false;
 		   param->broadcast_if = bcast_if;
 		   param->brightness = brighten_flg;
 		   break;
        default:{
-           os_printf("The fun is not add fun=%d!\n",fun_pos);
+           ACTION_DBG("The fun is not add fun=%d!\n",fun_pos);
            return FALSE;
        }
        
@@ -720,14 +670,14 @@ UserExecuteEspnowCmd(uint16 key_value)
 	int8 cmd_idx;
     for(i=0;i<MAX_COMMAND_COUNT;i++){
         if(userActionParam.userAction[i].key_value==(key_value&0xff)){//find the key 
-            os_printf("---------------------------------\n");
-            os_printf("the key value 0x%x\n",key_value);
+            ACTION_DBG("---------------------------------\n");
+            ACTION_DBG("the key value 0x%x\n",key_value);
             if(key_value>>8){//find long press
                 cmd_idx = userActionParam.userAction[i].user_long_press_func_pos;
                 if(cmd_idx!=-1){
                     fun_tag[cmd_idx].user_press_func(&(userActionParam.userAction[i].press_arg[1]));
                 }else{
-                    os_printf("the key =%d,but long press function is null\n",key_value);
+                    ACTION_DBG("the key =%04x,but long press function is null\n",key_value);
                     return FALSE;
                 }
             }
@@ -736,15 +686,15 @@ UserExecuteEspnowCmd(uint16 key_value)
                 if(cmd_idx!=-1){
                     fun_tag[cmd_idx].user_press_func(&(userActionParam.userAction[i].press_arg[0]));
                 }else{
-                    os_printf("the key =%d,but short press function is null\n",key_value);
+                    ACTION_DBG("the key =%04x,but short press function is null\n",key_value);
                     return FALSE;
                 }
             }
-            os_printf("---------------------------------\n");
+            ACTION_DBG("---------------------------------\n");
             return TRUE;
         }
     }
-    os_printf("Can not find cmd %d\n",key_value );
+    ACTION_DBG("Can not find cmd %d\n",key_value );
     return FALSE;
 }
 #endif

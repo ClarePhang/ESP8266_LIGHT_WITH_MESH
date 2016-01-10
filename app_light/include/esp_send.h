@@ -29,6 +29,23 @@ typedef enum{
 	TO_LOCAL,
 }EspSendTgt;
 
+typedef enum{
+    ESP_SERVER_ACTIVE,
+	ESP_LOCAL_ACTIVE,
+	ESP_DISABLE,
+}ESP_SEND_STATUS;
+
+typedef enum{
+    MESH_BROADCAST,
+	MESH_UNICAST,
+}MeshSendType;
+
+typedef struct{
+    uint8* src_addr;
+    uint8* dst_addr;
+}MeshSendAddr;
+
+
 
 #define ESP_SEND_TASK_QUEUE_SIZE  2
 #define ESP_SEND_TASK_PRIO 0
@@ -37,6 +54,7 @@ bool espSendQueueIsEmpty(RINGBUF* r);
 void espSendQueueInit();
 sint8 espSendQueueUpdate(RINGBUF* r);
 void espSendAck(RINGBUF* r);
+void espSendFlush(RINGBUF* r);
 
 
 
